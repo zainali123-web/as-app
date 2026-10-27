@@ -5,10 +5,11 @@ android {
     defaultConfig {
         applicationId = "com.asapp.chat"
         minSdk = 24; targetSdk = 34
-        versionCode = 10; versionName = "0.9"
+        versionCode = 11; versionName = "1.0"
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
 }
 dependencies { implementation("com.google.android.gms:play-services-nearby:19.1.0")
-    implementation("io.getstream:stream-webrtc-android:1.3.9") }
+    implementation("io.getstream:stream-webrtc-android:1.3.9")
+    implementation("androidx.core:core-ktx:1.13.1") }
