@@ -15,6 +15,7 @@ import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import org.json.JSONObject
@@ -72,6 +73,7 @@ class Calls(private val a: MainActivity) {
     private var muted = false
     private var speaker = false
     private var polling = false
+    private var accepted = false
     private var oldMode = AudioManager.MODE_NORMAL
     private var oldSpeaker = false
 
@@ -162,6 +164,7 @@ class Calls(private val a: MainActivity) {
         if (to == a.myId()) { a.toast("YOU CANNOT CALL YOURSELF"); return }
         if (!perms(video)) return
         peerId = to; callId = java.lang.Long.toHexString(java.security.SecureRandom().nextLong())
+        Store.addCall(to, "out", video)
         withVideo = video; state = 2; haveRemote = false; pendingIce.clear()
         openUi(video, "CALLING $to...")
         try {
@@ -181,7 +184,7 @@ class Calls(private val a: MainActivity) {
 
     // ---------- incoming ----------
     private fun ring(from: String, cid: String, video: Boolean, sdp: String) {
-        state = 1; peerId = from; callId = cid; withVideo = video; offerSdp = sdp; haveRemote = false; pendingIce.clear()
+        accepted = false; state = 1; peerId = from; callId = cid; withVideo = video; offerSdp = sdp; haveRemote = false; pendingIce.clear()
         try {
             ringtone = RingtoneManager.getRingtone(a, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)); ringtone?.play()
         } catch (e: Exception) {}
@@ -195,7 +198,7 @@ class Calls(private val a: MainActivity) {
     }
 
     private fun accept() {
-        stopRing()
+        stopRing(); Store.addCall(peerId, "in", withVideo); accepted = true
         if (!perms(withVideo)) { endCall(true, "ALLOW PERMISSIONS AND CALL BACK"); return }
         state = 2
         openUi(withVideo, "CONNECTING...")
@@ -309,6 +312,15 @@ class Calls(private val a: MainActivity) {
     }
 
     // ---------- call screen ----------
+    private fun roundBtn(label: String, icon: String, size: Int = 56, f: (ImageView) -> Unit): LinearLayout = LinearLayout(a).apply {
+        orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
+        val iv = ImageView(a).apply { setImageDrawable(PathIcon(icon, Color.WHITE)); setPadding(a.dpx(14), a.dpx(14), a.dpx(14), a.dpx(14))
+            background = Ui.shape(a, 0x33000000, 0xFF14E8C0.toInt(), 40, 2); setOnClickListener { f(this) } }
+        addView(iv, LinearLayout.LayoutParams(a.dpx(size), a.dpx(size)))
+        addView(TextView(a).apply { text = label; setTextColor(Color.WHITE); textSize = 13f; setPadding(0, a.dpx(6), 0, 0) })
+        layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f)
+    }
+
     private fun openUi(video: Boolean, label: String) {
         val am = a.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         oldMode = am.mode; oldSpeaker = am.isSpeakerphoneOn
@@ -317,7 +329,11 @@ class Calls(private val a: MainActivity) {
 
         val d = Dialog(a, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
         d.setCancelable(false)
-        val root = FrameLayout(a); root.setBackgroundColor(Color.BLACK)
+        val root = FrameLayout(a)
+        if (video) root.setBackgroundColor(Color.BLACK)
+        else root.background = android.graphics.drawable.GradientDrawable().apply {
+            gradientType = android.graphics.drawable.GradientDrawable.RADIAL_GRADIENT; gradientRadius = a.dpx(460).toFloat(); setGradientCenter(0.5f, 0.36f)
+            colors = intArrayOf(0xFF004321.toInt(), 0xFF05140A.toInt(), 0xFF000300.toInt()) }
         if (video) {
             initFactory()
             val rv = SurfaceViewRenderer(a); rv.init(eglBase!!.eglBaseContext, null); rv.setEnableHardwareScaler(true)
@@ -325,20 +341,33 @@ class Calls(private val a: MainActivity) {
             lv.setMirror(true); lv.setZOrderMediaOverlay(true)
             remoteView = rv; localView = lv
             root.addView(rv, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
-            root.addView(lv, FrameLayout.LayoutParams(a.dpx(110), a.dpx(150), Gravity.TOP or Gravity.END).apply { setMargins(0, a.dpx(40), a.dpx(12), 0) })
+            root.addView(lv, FrameLayout.LayoutParams(a.dpx(110), a.dpx(150), Gravity.TOP or Gravity.END).apply { setMargins(0, a.dpx(90), a.dpx(12), 0) })
         }
-        val st = TextView(a).apply { setTextColor(Color.WHITE); textSize = 20f; gravity = Gravity.CENTER; text = "$label\n$peerId" }
+        root.addView(Ui.logoBar(a).apply { gravity = Gravity.CENTER }, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT, Gravity.TOP).apply { topMargin = a.dpx(30) })
+        val name = a.net.name(peerId)
+        val st = TextView(a).apply { setTextColor(Color.WHITE); textSize = 20f; gravity = Gravity.CENTER; text = label }
         statusTv = st
-        root.addView(st, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT, Gravity.TOP).apply { topMargin = a.dpx(70) })
-
+        if (!video) {
+            val col = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL }
+            col.addView(Ui.avatar(a, a, peerId, name, "dm", 200).apply { ring = 0xFF14E8C0.toInt(); ringDp = 5f; layoutParams = LinearLayout.LayoutParams(a.dpx(200), a.dpx(200)) })
+            col.addView(TextView(a).apply { text = name; setTextColor(Color.WHITE); textSize = 30f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setPadding(0, a.dpx(18), 0, 0) })
+            col.addView(st, LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { topMargin = a.dpx(4) })
+            col.addView(LiveBars(a), LinearLayout.LayoutParams(a.dpx(260), a.dpx(46)).apply { topMargin = a.dpx(16) })
+            root.addView(col, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT, Gravity.TOP).apply { topMargin = a.dpx(100) })
+        } else {
+            root.addView(st, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT, Gravity.TOP).apply { topMargin = a.dpx(80) })
+        }
         val row = LinearLayout(a); row.gravity = Gravity.CENTER
-        fun b(t: String, f: (Button) -> Unit) = Button(a).apply { text = t; setOnClickListener { f(this) } }
-        row.addView(b("🎙 MUTE") { x -> muted = !muted; audioTrack?.setEnabled(!muted); x.text = if (muted) "🔇 UNMUTE" else "🎙 MUTE" })
-        row.addView(b(if (speaker) "🔊 SPEAKER" else "📱 EARPIECE") { x ->
-            speaker = !speaker; am.isSpeakerphoneOn = speaker; x.text = if (speaker) "🔊 SPEAKER" else "📱 EARPIECE" })
-        if (video) row.addView(b("🔄 CAMERA") { try { capturer?.switchCamera(null) } catch (e: Exception) {} })
-        row.addView(b("❌ END") { endCall(true, "CALL ENDED") })
-        root.addView(row, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT, Gravity.BOTTOM).apply { bottomMargin = a.dpx(30) })
+        row.addView(roundBtn(if (speaker) "Speaker" else "Earpiece", Icons.VOLUME) { x -> speaker = !speaker; am.isSpeakerphoneOn = speaker })
+        if (video) row.addView(roundBtn("Camera", Icons.CAMERA) { try { capturer?.switchCamera(null) } catch (e: Exception) {} })
+        else row.addView(roundBtn("Video", Icons.VIDEOCAM) { val p = peerId; endCall(true, "STARTING VIDEO CALL..."); a.ui.postDelayed({ call(p, true) }, 900) })
+        row.addView(roundBtn("Mute", Icons.MIC_OFF) { x -> muted = !muted; audioTrack?.setEnabled(!muted); x.alpha = if (muted) 0.5f else 1f })
+        root.addView(row, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT, Gravity.BOTTOM).apply { bottomMargin = a.dpx(150); leftMargin = a.dpx(20); rightMargin = a.dpx(20) })
+        root.addView(FrameLayout(a).apply {
+            background = android.graphics.drawable.GradientDrawable().apply { shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(0xFFFA0921.toInt()) }
+            addView(ImageView(a).apply { setImageDrawable(PathIcon(Icons.CALL_END, Color.WHITE)) }, FrameLayout.LayoutParams(a.dpx(36), a.dpx(36), Gravity.CENTER))
+            setOnClickListener { endCall(true, "CALL ENDED") }
+        }, FrameLayout.LayoutParams(a.dpx(76), a.dpx(76), Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply { bottomMargin = a.dpx(50) })
 
         d.setContentView(root)
         d.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -353,7 +382,7 @@ class Calls(private val a: MainActivity) {
             override fun run() {
                 if (state != 3) return
                 val s = (System.currentTimeMillis() - connectedAt) / 1000
-                statusTv?.text = "CONNECTED  %02d:%02d\n%s".format(s / 60, s % 60, peerId)
+                statusTv?.text = "%02d:%02d".format(s / 60, s % 60)
                 a.ui.postDelayed(this, 1000)
             }
         })
@@ -362,6 +391,7 @@ class Calls(private val a: MainActivity) {
     fun endCall(notify: Boolean, msg: String) {
         a.runOnUiThread {
             if (state == 0) return@runOnUiThread
+            if (state == 1 && !accepted) Store.addCall(peerId, "miss", withVideo)
             if (notify && peerId.isNotEmpty()) send(peerId, "end", callId)
             cleanup()
             a.toast(msg)
