@@ -20,7 +20,7 @@ class StatusUi(private val a: MainActivity, private val s: Screens) {
         val root = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL; setPadding(d(14), d(8), d(14), 0) }
         root.addView(LinearLayout(a).apply { gravity = Gravity.CENTER_VERTICAL
             addView(Ui.logoBar(a), Screens.lp0(0, W, 1f))
-            addView(Ui.iconBtn(a, Icons.MORE, Color.WHITE, 24, 8) { s.openTab(1) }) })
+            addView(Ui.iconBtn(a, Icons.MORE, Color.WHITE, 24, 8) { menu() }) })
         root.addView(t("Status", 22f, Color.WHITE, true).apply { setPadding(0, d(10), 0, d(6)) })
         val col = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL }
         val sv = ScrollView(a).apply { addView(col); isVerticalScrollBarEnabled = false }
@@ -63,9 +63,50 @@ class StatusUi(private val a: MainActivity, private val s: Screens) {
         }
     }
 
+    // ---------- three-dot menu ----------
+    private fun audLabel() = if ((a.prefsPublic().getString("statusAud", "all") ?: "all") == "close") "Close friends only" else "Everyone"
+    private fun menu() {
+        Dlg.sheet(a, listOf(
+            Dlg.Row(Icons.LOCK, "Status privacy", "Who can see my status: " + audLabel()) { privacy() },
+            Dlg.Row(Icons.FAVORITE, "Close friends", "${net.closeFriends().size} people") { closeFriends() },
+            Dlg.Row(Icons.CAMERA, "Add status", "Text, photo or video") { compose() },
+            Dlg.Row(Icons.TIME, "Refresh", "Load new updates") { s.openTab(1) },
+            Dlg.Row(Icons.DELETE, "Delete all my status", "Remove everything I posted", true) {
+                Dlg.confirm(a, Icons.DELETE, "Delete all status", "All your status updates will be removed for everyone.", "Delete", Icons.DELETE) {
+                    net.deleteAllStatus { s.statusCache.remove(a.myId()); a.toast("ALL YOUR STATUS WAS DELETED"); s.openTab(1) } } }))
+    }
+    private fun privacy() {
+        val cur = a.prefsPublic().getString("statusAud", "all") ?: "all"
+        PDialog(a).setTitle("Status privacy").setMessage("Who can see the status I post next?")
+            .setItems(arrayOf((if (cur == "all") "✓  " else "") + "Everyone", (if (cur == "close") "✓  " else "") + "Close friends only")) { _, i ->
+                a.prefsPublic().edit().putString("statusAud", if (i == 0) "all" else "close").apply()
+                a.toast(if (i == 0) "EVERYONE CAN SEE YOUR NEXT STATUS" else "ONLY YOUR CLOSE FRIENDS CAN SEE YOUR NEXT STATUS")
+                if (i == 1 && net.closeFriends().isEmpty()) closeFriends()
+            }.show()
+    }
+    private fun closeFriends() {
+        val ids = LinkedHashSet<String>(net.closeFriends())
+        val v = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL }
+        val list = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL }
+        fun draw() {
+            list.removeAllViews()
+            if (ids.isEmpty()) list.addView(t("No close friends yet. Add an AS-ID below.", 14f, Ui.GRAY).apply { setPadding(0, d(8), 0, d(8)) })
+            ids.forEach { id -> list.addView(LinearLayout(a).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(0, d(6), 0, d(6))
+                addView(Ui.avatar(a, a, id, net.name(id), "dm", 40)); addView(LinearLayout(a).apply { orientation = LinearLayout.VERTICAL; setPadding(d(10), 0, 0, 0)
+                    addView(t(net.name(id), 15f, Color.WHITE, true)); addView(t(id, 12f, Ui.GRAY)) }, Screens.lp0(0, W, 1f))
+                addView(Ui.iconBtn(a, Icons.CLOSE, Ui.GRAY, 20, 6) { ids.remove(id); draw() }) }) }
+        }
+        draw()
+        v.addView(ScrollView(a).apply { addView(list) }, Screens.lp0(M, d(180)))
+        val et = EditText(a).apply { hint = "Add AS-ID"; setHintTextColor(Ui.GRAY); setTextColor(Color.WHITE); setSingleLine(); filters = arrayOf(android.text.InputFilter.AllCaps()) }
+        v.addView(LinearLayout(a).apply { gravity = Gravity.CENTER_VERTICAL
+            addView(et, Screens.lp0(0, W, 1f)); addView(Dlg.outlineBtn(a, "Add") { val id = et.text.toString().trim().uppercase(); if (id.isNotEmpty() && id != a.myId()) { ids.add(id); net.openDm(id); et.setText(""); draw() } }) })
+        PDialog(a).setTitle("Close friends").setView(v).setPositiveButton("SAVE") { _, _ -> net.setCloseFriends(ids); a.toast("CLOSE FRIENDS SAVED") }.setNegativeButton("CANCEL", null).show()
+    }
+
     // ---------- create ----------
     private fun compose() {
-        AlertDialog.Builder(a).setTitle("Add status").setItems(arrayOf("✏️  Text", "🖼  Photo", "🎬  Video")) { _, i ->
+        PDialog(a).setTitle("Add status").setItems(arrayOf("✏️  Text", "🖼  Photo", "🎬  Video")) { _, i ->
             when (i) {
                 0 -> textStatus()
                 else -> {

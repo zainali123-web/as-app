@@ -16,7 +16,7 @@ class SettingsUi(private val a: MainActivity, private val s: Screens) {
 
     fun prompt(title: String, hint: String, initial: String, done: (String) -> Unit) {
         val et = EditText(a).apply { this.hint = hint; setText(initial) }
-        AlertDialog.Builder(a).setTitle(title).setView(FrameLayout(a).apply { setPadding(d(20), d(8), d(20), 0); addView(et) })
+        PDialog(a).setTitle(title).setView(FrameLayout(a).apply { setPadding(d(20), d(8), d(20), 0); addView(et) })
             .setPositiveButton("SAVE") { _, _ -> done(et.text.toString().trim()) }.setNegativeButton("CANCEL", null).show()
     }
 
@@ -80,7 +80,7 @@ class SettingsUi(private val a: MainActivity, private val s: Screens) {
 
     private fun quick() {
         val names = arrayOf("Account", "Chats", "Notifications", "Storage and Data", "Help")
-        AlertDialog.Builder(a).setItems(names) { _, i -> when (i) { 0 -> s.go("set-account") { account() }; 1 -> s.go("set-chats") { chatsPage() }; 2 -> s.go("set-n") { notifications() }; 3 -> s.go("set-storage") { storage() }; else -> s.go("set-help") { help() } } }.show()
+        PDialog(a).setItems(names) { _, i -> when (i) { 0 -> s.go("set-account") { account() }; 1 -> s.go("set-chats") { chatsPage() }; 2 -> s.go("set-n") { notifications() }; 3 -> s.go("set-storage") { storage() }; else -> s.go("set-help") { help() } } }.show()
     }
 
     // ---------- pages ----------
@@ -100,16 +100,24 @@ class SettingsUi(private val a: MainActivity, private val s: Screens) {
     }
 
     private fun chatsPage(): Unit = page("Chats") { c ->
+        c.addView(t("Screen size", 16f, Color.WHITE, true).apply { setPadding(d(4), d(4), 0, d(2)) })
+        c.addView(t("Make everything smaller or bigger. The app restarts.", 12.5f, Ui.GRAY).apply { setPadding(d(4), 0, 0, d(8)) })
+        val cur = a.uiScale()
+        val chips = LinearLayout(a)
+        listOf("Small" to 80, "Default" to 90, "Large" to 100, "Extra large" to 110).forEach { (nm, pct) ->
+            chips.addView(Ui.chip(a, nm, cur == pct) { if (cur != pct) a.setUiScale(pct) }, Screens.lp0(W, W).apply { rightMargin = d(8) })
+        }
+        c.addView(HorizontalScrollView(a).apply { addView(chips); isHorizontalScrollBarEnabled = false })
         val box = group(); c.addView(box)
         switchRow(box, "Auto background colour", "Changes softly every 15 seconds", "bgauto", true) { a.applyGlow() }
         c.addView(t("Background colour (60)", 14f, Ui.GRAY).apply { setPadding(d(4), d(14), 0, d(6)) })
         c.addView(a.colorRowPublic("bgfix") { a.glowColor(it) })
         val box2 = group(); c.addView(box2)
         item(box2, Icons.DELETE, "Clear all chats", "Deletes chats on this phone") {
-            AlertDialog.Builder(a).setMessage("Delete ALL chats on this phone?").setPositiveButton("DELETE") { _, _ -> Store.clearAll(); s.seed(); a.toast("DONE") }.setNegativeButton("CANCEL", null).show() }
+            PDialog(a).setMessage("Delete ALL chats on this phone?").setPositiveButton("DELETE") { _, _ -> Store.clearAll(); s.seed(); a.toast("DONE") }.setNegativeButton("CANCEL", null).show() }
         item(box2, Icons.PERSON, "Blocked contacts", "${net.blocked().size} blocked") {
             val bl = net.blocked().toList()
-            if (bl.isEmpty()) a.toast("NO BLOCKED CONTACTS") else AlertDialog.Builder(a).setItems(bl.map { net.name(it) + " ($it)" }.toTypedArray()) { _, i -> net.setBlocked(bl[i], false); a.toast("UNBLOCKED") }.setTitle("Tap to unblock").show() }
+            if (bl.isEmpty()) a.toast("NO BLOCKED CONTACTS") else PDialog(a).setItems(bl.map { net.name(it) + " ($it)" }.toTypedArray()) { _, i -> net.setBlocked(bl[i], false); a.toast("UNBLOCKED") }.setTitle("Tap to unblock").show() }
     }
 
     fun notifications(): Unit = page("Notifications") { c ->
@@ -132,7 +140,7 @@ class SettingsUi(private val a: MainActivity, private val s: Screens) {
         item(box, Icons.INFO, "Report a problem", "Send details to the AS CHATS team") { a.reportProblem() }
         item(box, Icons.SETTINGS, "Diagnostics", "Status of every part of the app") { a.showDiagnostics() }
         item(box, Icons.LOCK, "Privacy policy", "How your data is used") {
-            AlertDialog.Builder(a).setTitle("Privacy").setMessage("• We ask for your email only to create your account.\n• Your email is not shown to others.\n• Chat messages are end-to-end encrypted.\n• Photos, videos and statuses you post are stored on our free cloud servers.\n• You can delete your chats any time.").setPositiveButton("OK", null).show() }
+            PDialog(a).setTitle("Privacy").setMessage("• We ask for your email only to create your account.\n• Your email is not shown to others.\n• Chat messages are end-to-end encrypted.\n• Photos, videos and statuses you post are stored on our free cloud servers.\n• You can delete your chats any time.").setPositiveButton("OK", null).show() }
     }
 
     // ---------- starred ----------

@@ -81,7 +81,7 @@ class ProfileUi(private val a: MainActivity, private val s: Screens) {
 
     private fun menu(id: String, me: Boolean) {
         val items = if (me) arrayOf("Share my code", "Settings") else arrayOf(if (net.isBlocked(id)) "Unblock" else "Block", "Share this code")
-        AlertDialog.Builder(a).setItems(items) { _, i ->
+        PDialog(a).setItems(items) { _, i ->
             if (me) { if (i == 0) a.shareId() else s.openTab(3) }
             else if (i == 0) { net.setBlocked(id, !net.isBlocked(id)); a.toast(if (net.isBlocked(id)) "BLOCKED" else "UNBLOCKED") } else a.shareText("AS CHATS code: $id")
         }.show()
@@ -90,7 +90,7 @@ class ProfileUi(private val a: MainActivity, private val s: Screens) {
     private fun privacy() {
         val bl = net.blocked().toList()
         val msg = "• Your email is never shown to other people.\n• Chats are end-to-end encrypted.\n• Only your AS-ID, name and picture are visible.\n\nBlocked: " + (if (bl.isEmpty()) "nobody" else bl.joinToString { net.name(it) })
-        AlertDialog.Builder(a).setTitle("Privacy").setMessage(msg).setPositiveButton("OK", null)
+        PDialog(a).setTitle("Privacy").setMessage(msg).setPositiveButton("OK", null)
             .also { b -> if (bl.isNotEmpty()) b.setNeutralButton("UNBLOCK ALL") { _, _ -> bl.forEach { net.setBlocked(it, false) }; a.toast("DONE") } }.show()
     }
 

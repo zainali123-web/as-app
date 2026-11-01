@@ -33,7 +33,7 @@ class ReelsUi(private val a: MainActivity, private val s: Screens) {
         fun item(i: Int, label: String, ic: String, f: () -> Unit) = LinearLayout(a).apply {
             orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
             val on = i == sel
-            addView(Ui.icon(a, ic, if (on) Ui.GREEN else Ui.GRAY, 26)); addView(t(label, 12f, if (on) Ui.GREEN else Ui.GRAY))
+            addView(Ui.icon(a, ic, if (on) Ui.GREEN else Ui.GRAY, 26)); addView(t(label, 12f, if (on) Ui.GREEN else Ui.GRAY).apply { gravity = Gravity.CENTER }, Screens.lp0(W, W))
             addView(View(a).apply { setBackgroundColor(if (on) Ui.GREEN else Color.TRANSPARENT) }, Screens.lp0(d(40), d(3)).apply { topMargin = d(3) })
             setOnClickListener { f() }
         }
@@ -108,7 +108,7 @@ class ReelsUi(private val a: MainActivity, private val s: Screens) {
             addView(Ui.icon(a, ic, if (on) Ui.GREEN else Ui.TEAL, 34)); addView(t(title, 17f, if (on) Ui.GREEN else Color.WHITE, true).apply { setPadding(0, d(8), 0, 0) })
             addView(t(sub, 12f, if (on) Ui.GREEN else Ui.GRAY)); setOnClickListener { f() } }
         col.addView(LinearLayout(a).apply {
-            addView(card("Offline Reels", "Watch without internet ($n saved)", Icons.DOWN, false) { offline = true; a.say("ENJOY YOUR REEL"); s.go("feed") { feed(0) } }, Screens.lp0(0, W, 1f).apply { rightMargin = d(6) })
+            addView(card("Offline Reels", "Watch without internet ($n saved)", Icons.DOWN, false) { if (n == 0) askDownload() else { offline = true; a.say("ENJOY YOUR REEL"); s.go("feed") { feed(0) } } }, Screens.lp0(0, W, 1f).apply { rightMargin = d(6) })
             addView(card("Online Reels", "Stream & explore", Icons.GLOBE, true) { offline = false; a.say("ENJOY YOUR REEL"); s.go("feed") { feed(0) } }, Screens.lp0(0, W, 1f).apply { leftMargin = d(6) }) })
         val rows = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL }
         col.addView(rows)
@@ -135,6 +135,27 @@ class ReelsUi(private val a: MainActivity, private val s: Screens) {
                     addView(followPill(e.key))
                     setOnClickListener { s.go("profile:${e.key}") { a.profileUi.profile(e.key) } } }) }
                 rows.addView(HorizontalScrollView(a).apply { addView(h); isHorizontalScrollBarEnabled = false })
+            }
+        }
+    }
+
+    /** no saved reels yet: offer to download some now */
+    private fun askDownload() {
+        Dlg.confirm(a, Icons.DOWN, "No saved reels yet", "Download some reels now so you can watch them without internet?", "Download", Icons.DOWN) { downloadBatch() }
+    }
+    fun downloadBatch() {
+        if (!a.online()) { a.toast("NEEDS INTERNET. CONNECT AND TRY AGAIN."); return }
+        if (Keys.PEXELS.isEmpty()) { a.toast("REELS KEY IS MISSING IN KEYS.KT"); return }
+        if (!a.wifiOkPublic()) { Dlg.confirm(a, Icons.WARNING, "Use mobile data?", "Wi-Fi only saving is ON. Download anyway using mobile data (about 20 MB)?", "Download", Icons.DOWN) { a.prefsPublic().edit().putBoolean("wifionly", false).apply(); downloadBatch() }; return }
+        a.toast("DOWNLOADING REELS... PLEASE WAIT")
+        pexels { list ->
+            a.io.execute {
+                var ok = 0
+                for (r in list.take(8)) if (a.saveReelFile(r.id.removePrefix("pex_"), r.url)) ok++
+                a.runOnUiThread {
+                    if (ok > 0) Dlg.success(a, "Reels saved", "$ok reels are saved. Open Offline Reels to watch them without internet.") { if (s.cur == "reels") s.tab("reels") { home() } }
+                    else a.toast("DOWNLOAD FAILED. CHECK INTERNET AND FREE SPACE.")
+                }
             }
         }
     }
@@ -316,7 +337,7 @@ class ReelsUi(private val a: MainActivity, private val s: Screens) {
             val cap = EditText(a).apply { hint = "Write a caption"; maxLines = 3 }
             val tags = EditText(a).apply { hint = "#Hashtags  #Like  #This"; setSingleLine() }
             val box = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL; setPadding(d(20), d(8), d(20), 0); addView(cap); addView(tags) }
-            AlertDialog.Builder(a).setTitle("Upload Reel").setView(box).setPositiveButton("UPLOAD") { _, _ ->
+            PDialog(a).setTitle("Upload Reel").setView(box).setPositiveButton("UPLOAD") { _, _ ->
                 a.toast("UPLOADING... PLEASE WAIT")
                 net.upload(uri, true) { url -> if (url != null) net.postReel(url, cap.text.toString().trim(), tags.text.toString().trim()) { ok -> a.toast(if (ok) "REEL POSTED 🎉" else "POST FAILED (CHECK RULES)"); if (ok) { all = emptyList(); s.tab("reels") { home() } } } }
             }.setNegativeButton("CANCEL", null).show()

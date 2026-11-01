@@ -145,7 +145,7 @@ class MainActivity : Activity() {
         return sb.toString()
     }
     private fun showReport(title: String, text: String) {
-        AlertDialog.Builder(this).setTitle(title).setMessage(text)
+        PDialog(this).setTitle(title).setMessage(text)
             .setPositiveButton("SHARE") { _, _ ->
                 startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain")
                     .putExtra(Intent.EXTRA_TEXT, text), "SEND REPORT"))
@@ -211,6 +211,15 @@ class MainActivity : Activity() {
     }
 
     // ---------- lifecycle ----------
+    override fun attachBaseContext(base: Context) {
+        val pct = base.getSharedPreferences("as", 0).getInt("uiscale", 90)
+        val cfg = android.content.res.Configuration(base.resources.configuration)
+        cfg.densityDpi = (cfg.densityDpi * pct / 100f).toInt().coerceAtLeast(120)
+        super.attachBaseContext(base.createConfigurationContext(cfg))
+    }
+    fun uiScale(): Int = prefs().getInt("uiscale", 90)
+    fun setUiScale(p: Int) { prefs().edit().putInt("uiscale", p).putBoolean("toSettings", true).apply(); recreate() }
+
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         Store.init(this); Store.listener = { screens.refresh() }
@@ -229,7 +238,7 @@ class MainActivity : Activity() {
             }
         }
         lastOnline = online(); watchNet()
-        welcome()
+        if (prefs().getBoolean("in", false) && prefs().getBoolean("toSettings", false)) enter() else welcome()
     }
 
     // ---------- welcome + logo screens ----------
@@ -513,7 +522,7 @@ class MainActivity : Activity() {
     }
 
     private fun welcomeId() {
-        AlertDialog.Builder(this).setTitle("YOUR AS CODE")
+        PDialog(this).setTitle("YOUR AS CODE")
             .setMessage("${myId()}\n\nSHARE THIS CODE WITH FRIENDS SO THEY CAN FIND, CHAT AND CALL YOU. IT STAYS THE SAME ON EVERY PHONE WHEN YOU LOGIN WITH THIS EMAIL. YOUR EMAIL STAYS HIDDEN.")
             .setCancelable(false)
             .setPositiveButton("SHARE") { _, _ -> shareId(); enter() }
@@ -539,15 +548,13 @@ class MainActivity : Activity() {
 
 
 
-    fun reportProblem() = complaint()
-    private fun complaint() {
-        val box = EditText(this).apply { hint = "WRITE YOUR PROBLEM" }
-        AlertDialog.Builder(this).setTitle("REPORT A PROBLEM").setView(box)
-            .setPositiveButton("SEND") { _, _ ->
-                val text = "COMPLAINT FROM $myName:\n" + box.text.toString() + "\n\n" + report()
-                startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain")
-                    .putExtra(Intent.EXTRA_TEXT, text), "SEND TO AS CHATS TEAM"))
-            }.setNegativeButton("CANCEL", null).show()
+    fun reportProblem() { Dlg.report(this) }
+    fun sendReport(msg: String, shot: android.net.Uri?) {
+        val text = "COMPLAINT FROM $myName:\n" + msg + "\n\n" + report()
+        val i = if (shot != null) Intent(Intent.ACTION_SEND).setType("image/*").putExtra(Intent.EXTRA_STREAM, shot).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                else Intent(Intent.ACTION_SEND).setType("text/plain")
+        i.putExtra(Intent.EXTRA_TEXT, text).putExtra(Intent.EXTRA_SUBJECT, "AS CHATS problem report")
+        startActivity(Intent.createChooser(i, "SEND TO AS CHATS TEAM"))
     }
 
 
@@ -590,7 +597,7 @@ class MainActivity : Activity() {
     }
     private fun download(id: Long, link: String) {
         val f = File(reelDir(), "$id.mp4")
-        if (f.exists() || reelDir().usableSpace < (1L shl 30)) return
+        if (f.exists() || reelDir().usableSpace < (300L shl 20)) return
         trimReels(60L * 1024 * 1024)
         val tmp = File(reelDir(), "$id.part")
         try {
@@ -734,34 +741,6 @@ class MainActivity : Activity() {
 
     // ---------- colors ----------
 
-    // ---------- AS AI (free, rule-based for now) ----------
-    fun aiReply(q: String): String {
-        val s = q.lowercase()
-        return when {
-            "trial" in s || "free" in s || "price" in s || "paisa" in s || "\$" in s -> "AS CHATS IS FREE FOR 3 MONTHS. AFTER THAT IT IS \$5 PER MONTH (UNLOCK CODE)."
-            "offline" in s || "bluetooth" in s || "internet" in s -> "NEARBY CHAT WORKS WITHOUT INTERNET (BLUETOOTH / WIFI DIRECT). BOTH PHONES NEED AS CHATS. ONLINE CHAT NEEDS INTERNET."
-            " id" in s || s.startsWith("id") || "number" in s || "code" in s -> "YOUR EMAIL STAYS HIDDEN. OTHERS SEE ONLY YOUR AS-ID. FIND IT IN SETTINGS (MY CODE). THE SAME EMAIL GIVES THE SAME ID ON ANY PHONE."
-            "reel" in s || "video" in s -> "OPEN REELS, THEN CHOOSE ONLINE OR OFFLINE. SWIPE UP FOR THE NEXT REEL. ONLINE REELS SAVE ON WI-FI (UP TO 8 GB)."
-            "dp" in s || "photo" in s || "profile" in s -> "SETTINGS > SET PROFILE PICTURE. OTHERS CAN FIND YOU WITH SEARCH ID."
-            "color" in s || "colour" in s || "theme" in s -> "SETTINGS > BACKGROUND COLOR / CARTOON COLOR. CHOOSE ONE TO STOP AUTO CHANGE."
-            "voice" in s || "speaker" in s || "sound" in s -> "TAP THE SPEAKER AT THE TOP LEFT TO TURN VOICE ON OR OFF."
-            else -> "I AM A SIMPLE FREE HELPER FOR NOW. USE SETTINGS > REPORT A PROBLEM FOR OTHER HELP."
-        }
-    }
-    private fun asAi() {
-        val v = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(32, 16, 32, 0) }
-        val out = TextView(this).apply { text = "AS AI: HELLO! ASK ME ABOUT AS CHATS." }
-        val inp = EditText(this).apply { hint = "TYPE HERE" }
-        v.addView(ScrollView(this).apply { addView(out) }, LinearLayout.LayoutParams(MATCH_PARENT, dp(160)))
-        v.addView(inp)
-        val d = AlertDialog.Builder(this).setTitle("🤖 AS AI").setView(v)
-            .setPositiveButton("ASK", null).setNegativeButton("CLOSE", null).create()
-        d.show()
-        d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-            val q = inp.text.toString()
-            if (q.isNotBlank()) { out.append("\n\nYOU: $q\nAS AI: ${aiReply(q)}"); inp.setText("") }
-        }
-    }
 
     // ---------- cartoon buddies (girl S on the left, boy A on the right) ----------
     private class G(val kind: Int, val ball: Int, val r: Float, val arc: Float, val sp: Float)
@@ -823,7 +802,7 @@ class MainActivity : Activity() {
     }
     private val lifecycle = object : ConnectionLifecycleCallback() {
         override fun onConnectionInitiated(id: String, i: ConnectionInfo) {
-            AlertDialog.Builder(this@MainActivity)
+            PDialog(this@MainActivity)
                 .setTitle("CONNECT TO ${i.endpointName}?")
                 .setMessage("CODE: ${i.authenticationDigits}\nIS THIS THE SAME CODE ON THE OTHER PHONE?")
                 .setPositiveButton("YES") { _, _ -> client.acceptConnection(id, payloads) }
@@ -855,7 +834,7 @@ class MainActivity : Activity() {
         override fun onPayloadTransferUpdate(id: String, u: PayloadTransferUpdate) {}
     }
     // ---------- walkie-talkie + voice message (no internet) ----------
-    private fun micOk(): Boolean {
+    fun micOk(): Boolean {
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED) return true
         requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 2)
         toast("ALLOW MICROPHONE, THEN HOLD THE BUTTON AGAIN")
@@ -879,7 +858,7 @@ class MainActivity : Activity() {
             walkieOn = true
             rec.startRecording()
             st("10 WALKIE-TALKIE", "OK")
-            setNote("🎙 TALKING... RELEASE TO STOP")
+            setNote("🎙 TALKING... RELEASE TO STOP"); toast("🎙 YOU ARE LIVE. FRIENDS CAN HEAR YOU.")
             io.execute {
                 val buf = ByteArray(1600)
                 try {
@@ -906,7 +885,7 @@ class MainActivity : Activity() {
                     AudioFormat.ENCODING_PCM_16BIT, maxOf(min, 4096), AudioTrack.MODE_STREAM)
                 track = t
                 t.play()
-                runOnUiThread { setNote("🔊 LIVE VOICE...") }
+                runOnUiThread { setNote("🔊 LIVE VOICE..."); toast("🔊 LIVE VOICE FROM A FRIEND") }
                 val buf = ByteArray(1600)
                 while (true) {
                     val n = ins.read(buf)
@@ -1020,6 +999,72 @@ class MainActivity : Activity() {
         } catch (e: Exception) { st("11 VOICE MESSAGE", "FAILED: play ${e.message}") }
     }
 
+    // ================= report, AI helper =================
+    fun reportDiag(): String = report()
+    fun sendNearbyVoiceFile(f: File, secs: Int) {
+        sendVoiceBytes(f.readBytes())
+        Store.ensure("NEARBY", "Nearby Chat", "nearby")
+        Store.add("NEARBY", Msg(java.lang.Long.toHexString(SecureRandom().nextLong()), myId().ifEmpty { myName }, "", System.currentTimeMillis(), 1, "v", f.absolutePath, secs), true, "🎤 Voice message")
+    }
+    fun noteNewMessage() { say("NEW MESSAGE") }
+    private class Qa(val keys: List<String>, val en: String, val ur: String)
+    private val qa = listOf(
+        Qa(listOf("hello", "hi ", "salam", "assalam", "hey"), "Hello! I am the AS CHATS helper. Ask me anything about the app, for example: how to make a group, how to call, how to add a status, why a message is not sending.", "Assalam o alaikum! Main AS CHATS ka helper hoon. App ke bare mein kuch bhi poocho, jaise: group kaise banate hain, call kaise karte hain, status kaise lagate hain, message kyun nahi ja raha."),
+        Qa(listOf("signup", "sign up", "account bana", "register", "create account", "naya account", "account kaise"), "Tap CREATE NEW ACCOUNT on the login screen, type your email and a password (6+ letters), then open the email we send (check spam) and tap the link. Come back and press I HAVE VERIFIED. You get your AS-ID.", "Login screen par CREATE NEW ACCOUNT dabao, email aur password (kam az kam 6 harf) likho. Phir email kholo (spam bhi dekho), link par tap karo, wapas aa kar I HAVE VERIFIED dabao. Aap ko AS-ID mil jayegi."),
+        Qa(listOf("verify", "verification", "link nahi", "email nahi aya", "email nahi aaya", "code nahi"), "Check the spam folder, then press SEND EMAIL AGAIN on the verify screen. The email comes from Firebase and can take a few minutes. Make sure the email is typed correctly.", "Spam folder dekho, phir verify screen par SEND EMAIL AGAIN dabao. Email Firebase se aati hai, kuch minute lag sakte hain. Email sahi likhi ho ye bhi check karo."),
+        Qa(listOf("password bhool", "forgot", "reset password", "password reset", "password change"), "On the login screen tap Forgot password? (or Settings, Account, Reset password). We email you a link. Tap it, set a new password, then login. Note: old encrypted messages cannot be opened after a reset.", "Login screen par Forgot password? dabao (ya Settings, Account, Reset password). Email mein link aayega, us se naya password banao. Dhyan rahe: reset ke baad purane encrypted messages khul nahi sakte."),
+        Qa(listOf("as-id", "asid", "my id", "meri id", "my code", "mera code", "id kya", "id kahan", "id kahaan"), "Your AS-ID looks like AS-7K2P9X. Find it in Settings, Account, My code, or tap the code icon in Settings. Share it with friends so they can find you. Your email stays hidden.", "Aap ki AS-ID kuch aisi hoti hai AS-7K2P9X. Settings, Account, My code mein milti hai (ya Settings mein code wala icon). Dosto ko share karo taake wo aap ko dhoond saken. Aap ki email chhupi rehti hai."),
+        Qa(listOf("search", "find friend", "add friend", "dost", "dhoond", "dhund", "kisi ko kaise", "contact add"), "Tap Search ID on the home screen (or the green chat button, New chat). Type your friend's AS-ID. If found you can message, call or follow them.", "Home par Search ID dabao (ya green chat button, New chat). Dost ki AS-ID likho. Mil jaye to message, call ya follow kar sakte ho."),
+        Qa(listOf("nearby", "bina internet", "without internet", "offline chat", "bluetooth", "no internet"), "Nearby chat works without internet. Tap Nearby on the home screen on BOTH phones, allow the permissions, and stay close (about 50 to 100 metres). Confirm the code on both phones, then chat.", "Nearby chat bina internet chalti hai. Dono phones par home se Nearby dabao, permissions allow karo, aur qareeb raho (taqreeban 50 se 100 meter). Dono phones par code confirm karo, phir chat karo."),
+        Qa(listOf("walkie", "talkie", "live talk", "radio"), "Open the Voice Message tile, press and HOLD the walkie-talkie button and speak. Friends connected through Nearby hear you live. You will see TALKING while it is on air.", "Voice Message tile kholo, walkie-talkie button dabaye rakho aur bolo. Nearby se jude dost aap ko live sunte hain. Chalte waqt TALKING likha aata hai."),
+        Qa(listOf("voice message", "voice note", "awaaz", "record", "mic", "voice bhej"), "In a chat, press and HOLD the green mic button to record, release to send (max 30 seconds). Tap the play button on a voice bubble to listen. Without internet use the Voice Message tile with Nearby.", "Chat mein green mic button dabaye rakho, record hoga, chhorne par send ho jayega (zyada se zyada 30 second). Voice bubble par play dabao. Internet na ho to Voice Message tile aur Nearby use karo."),
+        Qa(listOf("voice call", "audio call", "call kaise", "call kar", "call karni"), "Open a chat and tap the phone icon, or use the Voice Call tile and enter an AS-ID. Both phones need internet and the app open. Calls on mobile data may need a TURN server.", "Chat kholo aur phone icon dabao, ya Voice Call tile mein AS-ID likho. Dono phones mein internet aur app khuli honi chahiye. Mobile data par kabhi kabhi TURN server chahiye hota hai."),
+        Qa(listOf("video call", "video kall", "face to face"), "Open a chat and tap the video icon, or use the Video Call tile. Allow camera and microphone. Use Camera to switch front and back, Mute to silence yourself.", "Chat kholo aur video icon dabao, ya Video Call tile use karo. Camera aur microphone ki ijazat do. Camera se front/back badlo, Mute se apni awaaz band karo."),
+        Qa(listOf("call nahi lag", "call not", "call connect", "call fail", "ring nahi", "call kyun"), "Both people must have the app open and internet on. If it fails on mobile data try Wi-Fi, because a TURN server may be needed. Allow microphone and camera. Check that the AS-ID is correct.", "Dono ke paas app khuli aur internet on hona chahiye. Mobile data par na lage to Wi-Fi try karo (TURN server ki zarurat ho sakti hai). Microphone aur camera allow karo. AS-ID sahi hai ye dekho."),
+        Qa(listOf("group", "gruop", "guroup"), "Tap the green chat button, then New group. Type a name (up to 25 letters), add members by AS-ID, set permissions and tap Create Group. Keep groups to 20 or 30 people because messages go to each member.", "Green chat button dabao, phir New group. Naam likho (25 harf tak), members ko AS-ID se add karo, permissions chuno aur Create Group dabao. Group 20 se 30 logon tak rakho kyunke message har member ko alag jata hai."),
+        Qa(listOf("status", "story", "stories"), "Open the Status tab. Tap My Status or the camera button to add text, photo or video. It disappears after 24 hours. Tap the three dots for Status privacy and Close friends. Photo and video need Cloudinary keys.", "Status tab kholo. My Status ya camera button se text, photo ya video lagao. 24 ghante baad khatam ho jata hai. Teen dots se Status privacy aur Close friends milte hain. Photo/video ke liye Cloudinary keys chahiye."),
+        Qa(listOf("close friend", "status privacy", "kon dekh", "who can see"), "In Status tap the three dots. Status privacy lets you choose Everyone or Close friends only. Close friends is a list of AS-IDs you choose.", "Status mein teen dots dabao. Status privacy mein Everyone ya Sirf Close friends chun sakte ho. Close friends un AS-ID ki list hai jo aap chunte ho."),
+        Qa(listOf("reel", "reels", "tiktok", "video dekh"), "Open Reels from the Reels card on the home screen (or menu, Reels). Swipe up for the next reel. Double-tap to like. Use the buttons on the right to comment, share, save, repost or download.", "Home par Reels card se (ya menu, Reels) kholo. Agli reel ke liye upar swipe karo. Double-tap se like. Right ke buttons se comment, share, save, repost ya download karo."),
+        Qa(listOf("offline reel", "offline reels", "reel download", "reels download", "download reel", "download reels", "save reel", "reels save", "reels offline", "reel offline"), "Reels save automatically on Wi-Fi (about 6 at a time). You can also open Reels, Offline Reels and tap Download now. The download button on a reel saves it to your gallery too. Settings, Storage and Data shows the saved size.", "Reels Wi-Fi par khud save hoti hain (taqreeban 6 ek baar mein). Reels, Offline Reels mein Download now bhi dabा sakte ho. Reel par download button usay gallery mein bhi save karta hai. Settings, Storage and Data mein saved size dikhta hai."),
+        Qa(listOf("upload reel", "reel upload", "reel post", "reel bana", "reel lagan"), "Tap the + button in the Reels menu, choose a video, write a caption and hashtags and press Upload. It needs Cloudinary keys in Keys.kt and an internet connection.", "Reels menu mein + button dabao, video chuno, caption aur hashtags likho aur Upload dabao. Iske liye Keys.kt mein Cloudinary keys aur internet chahiye."),
+        Qa(listOf("like", "comment", "repost", "follow", "share"), "On a reel use the buttons on the right: heart to like, bubble for comments, arrow to share the link, repost puts it on your profile, download saves it. Tap Follow to follow a creator.", "Reel par right ke buttons: dil se like, bubble se comments, arrow se link share, repost se apni profile par, download se save. Creator ko follow karne ke liye Follow dabao."),
+        Qa(listOf("photo", "picture", "tasveer", "image bhej", "pic"), "In an online chat tap the paper-clip (gallery) or camera icon to send a photo. Photos need Cloudinary keys in Keys.kt. Tap a photo to open it full screen.", "Online chat mein paper-clip (gallery) ya camera icon se photo bhejo. Photo ke liye Keys.kt mein Cloudinary keys chahiye. Photo par tap karo to poori screen par khulti hai."),
+        Qa(listOf("tick", "seen", "delivered", "double tick", "nishan"), "Clock = waiting. One grey tick = sent. Two grey ticks = delivered. Two blue ticks = seen. A red ! means it failed (wrong ID or no internet).", "Ghari = intezar. Ek grey tick = bhej diya. Do grey tick = pahunch gaya. Do neele tick = dekh liya. Laal ! = nahi gaya (ID galat ya internet nahi)."),
+        Qa(listOf("message nahi", "msg nahi", "not sending", "send nahi", "nahi ja raha", "failed", "pending"), "Check internet and that you are logged in. A red ! means the AS-ID was not found. A clock means it will be sent when the internet returns. Make sure the Firebase rules were published by the owner.", "Internet aur login check karo. Laal ! ka matlab AS-ID nahi mili. Ghari ka matlab internet aate hi chala jayega. Owner ne Firebase rules publish kiye hon ye bhi zaroori hai."),
+        Qa(listOf("delete", "mita", "hata", "remove message", "delete for everyone"), "Long-press a message. Delete for me removes it on your phone. Delete for everyone (your own messages) removes it for the other person too. Chats can also be deleted from the chat list by a long press.", "Message par long-press karo. Delete for me sirf aap ke phone se hatata hai. Delete for everyone (apne messages) samne wale se bhi hata deta hai. Chat list mein long-press se poori chat bhi delete hoti hai."),
+        Qa(listOf("star", "starred", "important"), "Long-press a message and choose Star. See them all in menu, Starred messages or Profile, Starred Messages.", "Message par long-press karke Star chuno. Sab menu, Starred messages ya Profile, Starred Messages mein milte hain."),
+        Qa(listOf("block", "tang", "spam", "gandi"), "Open the chat, tap the three dots, then Block. A blocked person's messages are ignored. Unblock in Settings, Chats, Blocked contacts.", "Chat kholo, teen dots, phir Block. Block kiye hue ke messages ignore ho jate hain. Unblock Settings, Chats, Blocked contacts mein hota hai."),
+        Qa(listOf("profile", "dp", "name change", "naam", "bio", "picture lagana"), "Tap the profile card on the home screen (or Settings). Tap the camera on the picture to change it, the pencil to change your name, and Bio to write something about you.", "Home par profile card dabao (ya Settings). Picture par camera se tasveer, pencil se naam, aur Bio se apne bare mein likho."),
+        Qa(listOf("size", "bada", "chota", "screen size", "font", "display"), "Go to Settings, Chats, Screen size and choose Small, Default, Large or Extra large. The app restarts with the new size.", "Settings, Chats, Screen size mein Small, Default, Large ya Extra large chuno. App naye size ke saath dobara khulti hai."),
+        Qa(listOf("colour", "color", "rang", "background", "theme"), "Settings, Chats lets you turn Auto background colour on or off and pick one of 60 soft colours.", "Settings, Chats mein Auto background colour on/off karo aur 60 halke rangon mein se ek chuno."),
+        Qa(listOf("notification", "awaaz band", "voice announce", "bolti"), "Settings, Notifications has Voice announcements. Turn it off to stop the spoken messages. Notifications while the app is closed are not available yet.", "Settings, Notifications mein Voice announcements hain. Band karo to bolna band ho jata hai. App band hone par notification abhi nahi aati."),
+        Qa(listOf("trial", "free", "price", "paisa", "5 dollar", "$5", "unlock", "crown", "subscription", "mahine"), "AS CHATS is free for 90 days. After that it costs $5 a month. Tap the crown icon to see your days left and to enter your unlock code.", "AS CHATS 90 din muft hai. Uske baad $5 mahina. Crown icon dabao to bache hue din aur unlock code ka page khulta hai."),
+        Qa(listOf("logout", "log out", "bahar nikal", "account badal"), "Settings, Account, Logout. You can login again later, even without internet on the same phone.", "Settings, Account, Logout. Baad mein usi phone par bina internet ke bhi dobara login ho sakta hai."),
+        Qa(listOf("new phone", "naya phone", "phone badal", "reinstall", "restore"), "Install the app on the new phone and login with the same email and password. You get the same AS-ID and your chat key comes back. Old chats stay on the old phone.", "Naye phone par app lagao aur wahi email password se login karo. Wahi AS-ID milti hai aur chat key wapas aa jati hai. Purani chats purane phone par hi rehti hain."),
+        Qa(listOf("safe", "secure", "privacy", "encrypt", "hack", "mehfooz"), "Chats are end-to-end encrypted. Your email is not shown to others. Photos, videos and statuses you post are stored on cloud servers. You can block people and delete chats.", "Chats end-to-end encrypted hain. Aap ki email doosron ko nahi dikhti. Jo photo, video, status lagate ho wo cloud servers par rehte hain. Aap block aur delete kar sakte ho."),
+        Qa(listOf("report", "problem", "complaint", "shikayat", "bug", "masla", "issue", "error"), "Open Settings, Help, Report a problem (or long-press a message, Report a problem). Write what is wrong, add a screenshot if you like, and send it to the AS CHATS team.", "Settings, Help, Report a problem (ya message par long-press, Report a problem). Kya masla hai likho, chaho to screenshot lagao, aur AS CHATS team ko bhejo."),
+        Qa(listOf("storage", "space", "memory", "jagah"), "Settings, Storage and Data shows how much space saved reels use (limit 8 GB, oldest are removed first). You can clear them there.", "Settings, Storage and Data mein saved reels ki jagah dikhti hai (limit 8 GB, purani pehle hatti hain). Wahin se clear bhi kar sakte ho."),
+        Qa(listOf("who are you", "kon ho", "kaun ho", "tum kya", "ai kya", "tum kaun"), "I am the AS CHATS helper. I know how the app works and can guide you step by step. I cannot read your chats.", "Main AS CHATS ka helper hoon. Mujhe app ka har hissa pata hai aur main step by step bata sakta hoon. Main aap ki chats nahi parh sakta."))
+
+    fun aiReply(q: String): String {
+        val low = " " + q.lowercase().replace(Regex("[^a-z0-9$ ]"), " ").replace(Regex(" +"), " ") + " "
+        val urdu = listOf("kaise", "kya", " hai", " hain", " ka ", " ki ", " ko ", "karo", "karna", "nahi", "mujhe", "mera", "meri", "kyun", "kahan", "bata", "chahiye", "lagana", "banana").any { low.contains(it) }
+        var best: Qa? = null; var bs = 0
+        for (e in qa) {
+            var sc = 0
+            for (k in e.keys) {
+                val kn = k.lowercase().replace(Regex("[^a-z0-9$ ]"), " ").replace(Regex(" +"), " ").trim()
+                if (kn.isEmpty()) continue
+                val hit = if (kn.length <= 4) low.contains(" $kn ") else low.contains(kn)
+                if (hit) sc += kn.length
+            }
+            if (sc > bs) { bs = sc; best = e }
+        }
+        if (best != null && bs >= 2) return if (urdu) best.ur else best.en
+        return if (urdu) "Mujhe ye sawal samajh nahi aaya. Aap ye poochh sakte ho: account kaise banate hain, group kaise banate hain, call kaise karte hain, status kaise lagate hain, reels kaise dekhte hain, message kyun nahi ja raha, screen ka size kaise badlen."
+        else "I did not understand that. You can ask: how to create an account, make a group, call a friend, add a status, watch reels, why a message is not sending, or how to change the screen size."
+    }
+
     // ================= new design: wiring =================
     val net by lazy { Net(this) }
     val screens by lazy { Screens(this) }
@@ -1047,6 +1092,8 @@ class MainActivity : Activity() {
         screens.seed()
         screens.tab("home") { screens.home() }
         say(if (online()) "CHATTING MODE IS ACTIVATED" else "OFFLINE MODE IS ACTIVATED")
+        ui.postDelayed({ if (online() && Keys.PEXELS.isNotEmpty() && wifiOk()) io.execute { try { autoSave() } catch (e: Exception) {} } }, 8000)
+        if (prefs().getBoolean("toSettings", false)) { prefs().edit().remove("toSettings").apply(); screens.openTab(3) }
     }
     private fun refreshMode() {
         val sub = if (prefs().getInt("exp", 0) >= today()) "SUBSCRIBED" else "TRIAL: ${daysLeft()} DAYS LEFT"
@@ -1080,7 +1127,6 @@ class MainActivity : Activity() {
         return HorizontalScrollView(this).apply { addView(row) }
     }
 
-    fun noteNewMessage() { say("NEW MESSAGE") }
     fun peerCount() = peers.size
     fun stopTts() { tts?.stop() }
     fun versionName(): String = try { packageManager.getPackageInfo(packageName, 0).versionName ?: "" } catch (e: Exception) { "" }
@@ -1164,6 +1210,8 @@ class MainActivity : Activity() {
 
     // reels files / language
     fun reelFiles(): List<File> = reelDir().listFiles()?.filter { it.name.endsWith(".mp4") && it.length() > 0 } ?: emptyList()
+    fun saveReelFile(id: String, link: String): Boolean { val n = id.toLongOrNull() ?: return false; download(n, link); return File(reelDir(), "$n.mp4").exists() }
+    fun wifiOkPublic() = wifiOk()
     fun autoSaveReel(id: String, link: String) { val n = id.toLongOrNull() ?: return; if (wifiOk()) io.execute { download(n, link) } }
     fun langQuery(): String = langQ[prefs().getInt("lang", 0)]
     fun langName(): String = langs[prefs().getInt("lang", 0)]

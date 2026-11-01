@@ -74,6 +74,7 @@ object Store {
         val a = JSONArray(); (cache[id] ?: return).forEach { a.put(it.toJson()) }
         file(id).writeText(a.toString())
     }
+    fun listenerPing() { changed() }
     private fun changed() { listener?.let { l -> android.os.Handler(android.os.Looper.getMainLooper()).post { l() } } }
 
     @Synchronized fun all(): List<Conv> = convs.values.sortedByDescending { it.lastTs }
@@ -133,6 +134,9 @@ object Store {
     @Synchronized fun deleteMsg(convId: String, id: String) {
         val l = cache.getOrPut(convId) { ArrayList(messages(convId)) }
         l.removeAll { it.id == id }; saveMsgs(convId); changed()
+    }
+    @Synchronized fun deleteMsgFrom(convId: String, id: String, from: String) {
+        if (messages(convId).any { it.id == id && it.from == from }) deleteMsg(convId, id)
     }
     @Synchronized fun clearChat(convId: String) {
         cache[convId] = ArrayList(); saveMsgs(convId)

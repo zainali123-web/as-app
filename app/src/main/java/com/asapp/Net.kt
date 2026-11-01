@@ -10,7 +10,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.security.SecureRandom
 
-class StatusItem(val id: String, val type: String, val text: String, val url: String, val bg: Int, val ts: Long)
+class StatusItem(val id: String, val type: String, val text: String, val url: String, val bg: Int, val ts: Long, val aud: String = "all")
 class ReelItem(val id: String, val url: String, val owner: String, val name: String, val cap: String, val tags: String, val ts: Long, val official: Boolean = false, val thumb: String = "")
 class CommentItem(val id: String, val from: String, val name: String, val text: String, val ts: Long)
 
@@ -149,6 +149,7 @@ class Net(private val a: MainActivity) {
                 a.runOnUiThread { a.noteNewMessage() }
             }
             "a" -> Store.setStatus(from, o.optString("id"), o.optInt("s"))
+            "d" -> { val g = o.optString("g"); Store.deleteMsgFrom(if (g.isNotEmpty()) g else from, o.optString("id"), from) }
             "gi" -> {
                 val gid = o.optString("g"); if (gid.isEmpty()) return
                 val ms = ArrayList<String>(); val arr = o.optJSONArray("m"); if (arr != null) for (i in 0 until arr.length()) ms.add(arr.getString(i))
@@ -234,7 +235,7 @@ class Net(private val a: MainActivity) {
     fun postStatus(type: String, text: String, url: String, bg: Int, done: (Boolean) -> Unit) {
         if (!ready()) { a.toast("STATUS NEEDS INTERNET"); done(false); return }
         a.io.execute {
-            val o = JSONObject().put("type", type).put("text", text).put("url", url).put("bg", bg).put("ts", now())
+            val o = JSONObject().put("type", type).put("text", text).put("url", url).put("bg", bg).put("ts", now()).put("aud", a.prefsPublic().getString("statusAud", "all"))
             val ok = fb("PUT", "status/${me()}/items/${rid()}.json", o.toString()) != null
             a.runOnUiThread { done(ok) }
         }
@@ -248,12 +249,32 @@ class Net(private val a: MainActivity) {
                 if (r != null && r.trim() != "null") {
                     val o = JSONObject(r)
                     for (k in o.keys()) { val x = o.getJSONObject(k)
-                        if (now() - x.optLong("ts") < 24L * 3600 * 1000) out.add(StatusItem(k, x.optString("type"), x.optString("text"), x.optString("url"), x.optInt("bg"), x.optLong("ts"))) }
+                        if (now() - x.optLong("ts") < 24L * 3600 * 1000) out.add(StatusItem(k, x.optString("type"), x.optString("text"), x.optString("url"), x.optInt("bg"), x.optLong("ts"), x.optString("aud", "all"))) }
                 }
             } catch (e: Exception) {}
+            if (id != me() && out.any { it.aud == "close" }) {
+                val ok = fb("GET", "status/$id/close/${me()}.json")?.trim() == "true"
+                if (!ok) out.removeAll { it.aud == "close" }
+            }
             out.sortBy { it.ts }
             a.runOnUiThread { done(out) }
         }
+    }
+    fun closeFriends(): Set<String> = cp.getStringSet("close", emptySet()) ?: emptySet()
+    fun setCloseFriends(ids: Set<String>) {
+        cp.edit().putStringSet("close", HashSet(ids)).apply()
+        if (!ready()) return
+        a.io.execute {
+            if (ids.isEmpty()) fb("DELETE", "status/${me()}/close.json")
+            else { val o = JSONObject(); ids.forEach { o.put(it, true) }; fb("PUT", "status/${me()}/close.json", o.toString()) }
+        }
+    }
+    fun deleteAllStatus(done: () -> Unit) { a.io.execute { fb("DELETE", "status/${me()}/items.json"); a.runOnUiThread { done() } } }
+    fun deleteForEveryone(c: Conv, m: Msg) {
+        Store.deleteMsg(c.id, m.id)
+        val pkt = JSONObject().put("t", "d").put("id", m.id).put("g", if (c.type == "group") c.id else "")
+        val targets = if (c.type == "group") c.members.filter { it != me() } else listOf(c.id)
+        a.io.execute { targets.forEach { a.sendOnline(it, pkt.toString()) } }
     }
     fun markViewed(owner: String, sid: String) { if (ready()) a.io.execute { fb("PUT", "status/$owner/views/$sid/${me()}.json", now().toString()) } }
     fun viewCount(owner: String, sid: String, done: (Int) -> Unit) {

@@ -55,7 +55,7 @@ class Screens(val a: MainActivity) {
             bar.addView(LinearLayout(a).apply {
                 orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
                 addView(Ui.icon(a, it.second, if (on) Ui.GREEN else Ui.GRAY, 26))
-                addView(t(it.first, 12f, if (on) Ui.GREEN else Ui.GRAY))
+                addView(t(it.first, 12f, if (on) Ui.GREEN else Ui.GRAY).apply { gravity = Gravity.CENTER }, lp(W, W))
                 addView(View(a).apply { setBackgroundColor(if (on) Ui.GREEN else Color.TRANSPARENT) }, lp(d(54), d(3)).apply { topMargin = d(4) })
                 setOnClickListener { openTab(i) }
             }, lp(0, W, 1f))
@@ -97,16 +97,12 @@ class Screens(val a: MainActivity) {
     }
 
     private fun menu() {
-        val items = arrayOf("🎬  Reels", "📤  Share my code", "⭐  Starred messages", "🐞  Report a problem", "🚪  Logout")
-        AlertDialog.Builder(a).setItems(items) { _, i ->
-            when (i) {
-                0 -> a.reelsUi.open()
-                1 -> a.shareId()
-                2 -> go("starred") { a.settingsUi.starred() }
-                3 -> a.reportProblem()
-                else -> a.logout()
-            }
-        }.show()
+        Dlg.sheet(a, listOf(
+            Dlg.Row(Icons.PLAY, "Reels", "Watch, like, share and upload") { a.reelsUi.open() },
+            Dlg.Row(Icons.DIALPAD, "Share my code", "Let friends find you") { a.shareId() },
+            Dlg.Row(Icons.STAR, "Starred messages", "Your important messages") { go("starred") { a.settingsUi.starred() } },
+            Dlg.Row(Icons.WARNING, "Report a problem", "Help us improve", true) { a.reportProblem() },
+            Dlg.Row(Icons.CALL_END, "Logout", "Sign out on this phone") { a.logout() }))
     }
 
     // ---------- HOME (chats) ----------
@@ -150,6 +146,15 @@ class Screens(val a: MainActivity) {
             }
         }, lp(M, W).apply { topMargin = d(8) })
 
+        col.addView(LinearLayout(a).apply {
+            gravity = Gravity.CENTER_VERTICAL; background = Ui.card(a, 16); setPadding(d(14), d(12), d(14), d(12))
+            addView(Dlg.ring(a, Icons.PLAY, 44))
+            addView(LinearLayout(a).apply { orientation = LinearLayout.VERTICAL; setPadding(d(12), 0, 0, 0)
+                addView(t("Reels", 16f, Color.WHITE, true)); addView(t("Watch, like, share, download and upload", 12f, Ui.GRAY)) }, lp(0, W, 1f))
+            addView(Ui.icon(a, Icons.CHEVRON, Ui.GRAY, 24))
+            setOnClickListener { a.reelsUi.open() }
+        }, lp(M, W).apply { topMargin = d(6); leftMargin = d(5); rightMargin = d(5) })
+
         // CHATS title + filter
         col.addView(LinearLayout(a).apply {
             gravity = Gravity.CENTER_VERTICAL
@@ -159,7 +164,7 @@ class Screens(val a: MainActivity) {
             addView(LinearLayout(a).apply {
                 gravity = Gravity.CENTER_VERTICAL; background = Ui.shape(a, 0xFF05181A.toInt(), Ui.CARD_STROKE, 30); setPadding(d(14), d(7), d(10), d(7))
                 addView(t(names[filter], 14f)); addView(Ui.icon(a, Icons.DOWN, Color.WHITE, 22))
-                setOnClickListener { AlertDialog.Builder(a).setItems(names.toTypedArray()) { _, i -> filter = i; refresh() }.show() }
+                setOnClickListener { PDialog(a).setItems(names.toTypedArray()) { _, i -> filter = i; refresh() }.show() }
             })
         }, lp(M, W).apply { topMargin = d(14) })
         col.addView(Ui.divider(a), lp(M, d(1)).apply { topMargin = d(10) })
@@ -207,20 +212,22 @@ class Screens(val a: MainActivity) {
         setOnClickListener { openChat(c.id) }
         setOnLongClickListener {
             if (c.type == "official" || c.type == "ai") true else {
-                AlertDialog.Builder(a).setTitle(c.name).setItems(arrayOf("Delete this chat")) { _, _ -> Store.remove(c.id) }.show(); true }
+                PDialog(a).setTitle(c.name).setItems(arrayOf("Delete this chat")) { _, _ -> Store.remove(c.id) }.show(); true }
         }
     }
 
     private fun newChatMenu() {
-        val items = arrayOf("💬  New chat (enter AS-ID)", "👥  New group", "📡  Nearby chat (no internet)", "🔎  Search ID", "🤖  AS AI")
-        AlertDialog.Builder(a).setItems(items) { _, i ->
-            when (i) { 0 -> askId(null); 1 -> go("newgroup") { createGroup() }; 2 -> { a.startNearby(); openChat("NEARBY0") }; 3 -> searchId(); else -> openChat("AI") }
-        }.show()
+        Dlg.sheet(a, listOf(
+            Dlg.Row(Icons.CHAT, "New chat", "Enter an AS-ID") { askId(null) },
+            Dlg.Row(Icons.GROUP_ADD, "New group", "Chat with many friends") { go("newgroup") { createGroup() } },
+            Dlg.Row(Icons.SEARCH, "Nearby chat", "No internet needed") { a.startNearby(); openChat("NEARBY0") },
+            Dlg.Row(Icons.PERSON_SEARCH, "Search ID", "Find a friend") { searchId() },
+            Dlg.Row(Icons.MEMORY, "AS AI", "Ask anything about the app") { openChat("AI") }))
     }
 
     fun askId(call: Boolean?) {
         val box = EditText(a).apply { hint = "AS-XXXXXX"; setSingleLine(); filters = arrayOf(android.text.InputFilter.AllCaps()) }
-        AlertDialog.Builder(a).setTitle(when (call) { true -> "VIDEO CALL: ENTER AS-ID"; false -> "VOICE CALL: ENTER AS-ID"; else -> "NEW CHAT: ENTER AS-ID" })
+        PDialog(a).setTitle(when (call) { true -> "VIDEO CALL: ENTER AS-ID"; false -> "VOICE CALL: ENTER AS-ID"; else -> "NEW CHAT: ENTER AS-ID" })
             .setView(FrameLayout(a).apply { setPadding(d(20), d(8), d(20), 0); addView(box) })
             .setPositiveButton("OK") { _, _ ->
                 val id = box.text.toString().trim().uppercase()
@@ -231,7 +238,7 @@ class Screens(val a: MainActivity) {
 
     fun searchId() {
         val box = EditText(a).apply { hint = "AS-XXXXXX"; setSingleLine(); filters = arrayOf(android.text.InputFilter.AllCaps()) }
-        AlertDialog.Builder(a).setTitle("SEARCH AS-ID").setView(FrameLayout(a).apply { setPadding(d(20), d(8), d(20), 0); addView(box) })
+        PDialog(a).setTitle("SEARCH AS-ID").setView(FrameLayout(a).apply { setPadding(d(20), d(8), d(20), 0); addView(box) })
             .setPositiveButton("SEARCH") { _, _ ->
                 val id = box.text.toString().trim().uppercase()
                 if (!a.onlineReady() || !a.online()) { a.toast("NEEDS INTERNET + LOGIN"); return@setPositiveButton }
@@ -247,16 +254,43 @@ class Screens(val a: MainActivity) {
     }
 
     private fun voiceDialog() {
-        val v = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL; setPadding(d(20), d(12), d(20), d(4)) }
-        v.addView(t("Works WITHOUT internet. Tap NEARBY first so phones connect.", 13f, Color.DKGRAY))
-        fun holdBtn(label: String, down: () -> Unit, up: () -> Unit) = Button(a).apply {
-            text = label; setOnTouchListener { _, e ->
-                when (e.action) { MotionEvent.ACTION_DOWN -> down(); MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> up() }; true }
+        lateinit var dlg: android.app.Dialog
+        val v = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(d(18), d(18), d(18), d(16)) }
+        v.addView(Dlg.ring(a, Icons.MIC, 58))
+        v.addView(t("Voice Message", 22f, Color.WHITE, true).apply { setPadding(0, d(8), 0, d(4)) })
+        v.addView(t("Works WITHOUT internet through Nearby. Both phones must be connected.", 13f, Ui.GRAY).apply { gravity = Gravity.CENTER })
+        val status = t("", 15f, Ui.GREEN, true).apply { gravity = Gravity.CENTER; setPadding(0, d(12), 0, d(12)) }
+        fun idle() { status.setTextColor(if (a.peerCount() > 0) Ui.GREEN else 0xFFFFB74D.toInt()); status.text = if (a.peerCount() > 0) "✓ Connected to ${a.peerCount()} phone(s)" else "⚠ Not connected. Tap 'Find people' below first." }
+        idle(); v.addView(status)
+        val timer = object : Runnable { var t0 = 0L; var label = ""; override fun run() {
+            val sec = (System.currentTimeMillis() - t0) / 1000; status.text = "$label  %d:%02d".format(sec / 60, sec % 60); a.ui.postDelayed(this, 300) } }
+        fun holdBtn(label: String, down: () -> Boolean, up: () -> Unit, liveLabel: String): View {
+            val tx = TextView(a).apply { text = label; textSize = 15f; gravity = Gravity.CENTER; setTextColor(0xFF03241A.toInt()); typeface = Typeface.DEFAULT_BOLD; setPadding(d(10), d(18), d(10), d(18)) }
+            fun paint(on: Boolean) { tx.background = if (on) Ui.shape(a, Ui.RED, 0, 30) else android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(0xFF0BE68E.toInt(), 0xFF00F5B0.toInt())).apply { cornerRadius = d(30).toFloat() }
+                tx.setTextColor(if (on) Color.WHITE else 0xFF03241A.toInt()); tx.text = if (on) "🔴  $liveLabel  (release to stop)" else label }
+            paint(false)
+            tx.setOnTouchListener { vw, e ->
+                when (e.action) {
+                    MotionEvent.ACTION_DOWN -> {
+                        if (a.peerCount() == 0) { idle(); a.toast("NOT CONNECTED. TAP FIND PEOPLE FIRST.") }
+                        else if (down()) { paint(true); vw.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS); status.setTextColor(Ui.RED); timer.t0 = System.currentTimeMillis(); timer.label = liveLabel; a.ui.post(timer) }
+                    }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> { a.ui.removeCallbacks(timer); if (tx.text.startsWith("🔴")) { up(); paint(false); idle(); a.toast("✓ DONE") } }
+                }
+                true
+            }
+            return tx
         }
-        v.addView(holdBtn("🎙 HOLD: LIVE TALK (WALKIE-TALKIE)", { a.startWalkie() }, { a.stopWalkie() }))
-        v.addView(holdBtn("🎤 HOLD: RECORD + SEND VOICE MESSAGE", { a.startVoiceMsg() }, { a.stopVoiceMsg() }))
-        v.addView(Button(a).apply { text = "▶ PLAY LAST RECEIVED"; setOnClickListener { a.playLast() } })
-        AlertDialog.Builder(a).setTitle("🎤 Voice Message").setView(v).setNegativeButton("CLOSE", null).show()
+        v.addView(holdBtn("🎙  HOLD TO TALK LIVE", { a.startWalkie(); true }, { a.stopWalkie() }, "LIVE ON AIR"), lp(M, W))
+        v.addView(holdBtn("🎤  HOLD TO RECORD & SEND", { a.beginRecording() }, { val r = a.endRecording(); if (r != null) a.sendNearbyVoiceFile(r.first, r.second) }, "RECORDING"), lp(M, W).apply { topMargin = d(12) })
+        v.addView(LinearLayout(a).apply {
+            addView(Dlg.outlineBtn(a, "Find people") { a.startNearby(); a.ui.postDelayed({ idle() }, 1500); a.toast("SEARCHING FOR NEARBY PHONES...") }, lp(0, W, 1f).apply { rightMargin = d(6) })
+            addView(Dlg.outlineBtn(a, "▶ Last voice") { a.playLast() }, lp(0, W, 1f).apply { leftMargin = d(6) })
+        }, lp(M, W).apply { topMargin = d(14) })
+        v.addView(t("Close", 14f, Ui.GRAY).apply { gravity = Gravity.CENTER; setPadding(0, d(14), 0, 0); setOnClickListener { dlg.dismiss() } })
+        dlg = Dlg.make(a, v)
+        dlg.setOnDismissListener { a.ui.removeCallbacks(timer); a.stopWalkie() }
+        dlg.show()
     }
 
     // ---------- CHAT ----------
@@ -340,12 +374,17 @@ class Screens(val a: MainActivity) {
             override fun onTextChanged(t: CharSequence?, x: Int, y: Int, z: Int) {}
         })
         var recording = false
-        mic.setOnTouchListener { _, e ->
+        val recT = object : Runnable { var t0 = 0L; override fun run() { val sec = (System.currentTimeMillis() - t0) / 1000; input.hint = "🔴 Recording  %d:%02d  (release to send)".format(sec / 60, sec % 60); a.ui.postDelayed(this, 300) } }
+        fun recUi(on: Boolean) {
+            pill.background = Ui.shape(a, 0xFF04191C.toInt(), if (on) Ui.RED else Ui.TEAL, 30)
+            if (on) { recT.t0 = System.currentTimeMillis(); a.ui.post(recT) } else { a.ui.removeCallbacks(recT); input.hint = "Type a message..." }
+        }
+        mic.setOnTouchListener { vw, e ->
             val hasText = !input.text.isNullOrBlank()
             when (e.action) {
-                MotionEvent.ACTION_DOWN -> if (!hasText && conv.type != "ai") { if (a.beginRecording()) { recording = true; a.toast("🎤 RECORDING... RELEASE TO SEND") } }
+                MotionEvent.ACTION_DOWN -> if (!hasText && conv.type != "ai") { if (a.beginRecording()) { recording = true; vw.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS); recUi(true) } }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    if (recording) { recording = false; val r = a.endRecording(); if (r != null) net.sendVoice(conv, r.first, r.second) }
+                    if (recording) { recording = false; recUi(false); val r = a.endRecording(); if (r != null) net.sendVoice(conv, r.first, r.second) }
                     else if (hasText && e.action == MotionEvent.ACTION_UP) { val tx = input.text.toString().trim(); input.setText(""); if (tx.isNotEmpty()) net.sendText(conv, tx) }
                 }
             }
@@ -362,7 +401,7 @@ class Screens(val a: MainActivity) {
         val g = GridView(a).apply { numColumns = 7; adapter = object : BaseAdapter() {
             override fun getCount() = chars.size; override fun getItem(p: Int) = chars[p]; override fun getItemId(p: Int) = p.toLong()
             override fun getView(p: Int, v: View?, parent: android.view.ViewGroup?) = t(chars[p], 26f).apply { gravity = Gravity.CENTER; setPadding(0, d(8), 0, d(8)) } } }
-        val dlg = AlertDialog.Builder(a).setView(g).create()
+        val dlg = PDialog(a).setView(g).create()
         g.setOnItemClickListener { _, _, p, _ -> input.append(chars[p]); dlg.dismiss() }
         dlg.show()
     }
@@ -421,13 +460,15 @@ class Screens(val a: MainActivity) {
         })
         b.setOnLongClickListener {
             val star = Store.isStar(m.id)
-            AlertDialog.Builder(a).setItems(arrayOf("Copy", if (star) "Remove star" else "Star", "Delete for me")) { _, i ->
-                when (i) {
-                    0 -> { (a.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("m", m.text)); a.toast("COPIED") }
-                    1 -> Store.toggleStar(m.id)
-                    else -> Store.deleteMsg(c.id, m.id)
-                }
-            }.show(); true
+            val rows = ArrayList<Dlg.Row>()
+            if (m.kind == "t") rows.add(Dlg.Row(Icons.COPY, "Copy", "Copy message text") {
+                (a.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("m", m.text)); a.toast("COPIED") })
+            rows.add(Dlg.Row(Icons.STAR, if (star) "Remove star" else "Star", if (star) "Remove from starred" else "Star this message") { Store.toggleStar(m.id); Store.listenerPing() })
+            rows.add(Dlg.Row(Icons.DELETE, "Delete for me", "Remove from this phone") { Store.deleteMsg(c.id, m.id) })
+            if (mine && (c.type == "dm" || c.type == "group")) rows.add(Dlg.Row(Icons.GROUPS, "Delete for everyone", "Remove for everyone in this chat") {
+                Dlg.confirm(a, Icons.DELETE, "Delete for everyone", "This message will be removed for everyone in this chat.", "Delete", Icons.DELETE) { net.deleteForEveryone(c, m) } })
+            rows.add(Dlg.Row(Icons.WARNING, "Report a problem", "Help us improve", true) { a.reportProblem() })
+            Dlg.sheet(a, rows, true); true
         }
         return LinearLayout(a).apply { gravity = if (mine) Gravity.END else Gravity.START; setPadding(0, d(3), 0, d(3)); addView(b, lp(W, W)) }
     }
@@ -446,7 +487,7 @@ class Screens(val a: MainActivity) {
             "nearby" -> { items.add("Find people (start Nearby)"); items.add("Clear chat") }
             else -> items.add("Clear chat")
         }
-        AlertDialog.Builder(a).setItems(items.toTypedArray()) { _, i ->
+        PDialog(a).setItems(items.toTypedArray()) { _, i ->
             when (items[i]) {
                 "View profile" -> go("profile:${c.id}") { a.profileUi.profile(c.id) }
                 "Group info" -> groupInfo(c)
@@ -461,7 +502,7 @@ class Screens(val a: MainActivity) {
 
     private fun groupInfo(c: Conv) {
         val s = c.members.joinToString("\n") { (if (it == a.myId()) "You" else net.name(it)) + (if (it == c.members.firstOrNull()) "  (admin)" else "") + "\n   $it" }
-        AlertDialog.Builder(a).setTitle(c.name + " (" + c.members.size + ")").setMessage(s).setPositiveButton("OK", null).show()
+        PDialog(a).setTitle(c.name + " (" + c.members.size + ")").setMessage(s).setPositiveButton("OK", null).show()
     }
 
     // ---------- CREATE GROUP ----------
@@ -537,7 +578,7 @@ class Screens(val a: MainActivity) {
         v.addView(Button(a).apply { text = "ADD THIS ID"; setOnClickListener {
             val id = inp.text.toString().trim().uppercase()
             if (id.isNotEmpty() && !ids.contains(id)) { ids.add(id); chosen.add(id); net.openDm(id); addBox(id); (boxes.getChildAt(boxes.childCount - 1) as CheckBox).isChecked = true; inp.setText("") } } })
-        AlertDialog.Builder(a).setTitle("Add members").setView(v).setPositiveButton("DONE") { _, _ -> done() }.show()
+        PDialog(a).setTitle("Add members").setView(v).setPositiveButton("DONE") { _, _ -> done() }.show()
     }
 
     // ---------- CALLS ----------
@@ -550,7 +591,10 @@ class Screens(val a: MainActivity) {
             addView(Ui.greenCircle(a, Icons.CALL, 40) {}.apply { background = Ui.shape(a, Ui.GREEN, 0, 12); (getChildAt(0) as ImageView).setImageDrawable(PathIcon(Icons.CALL, 0xFF03241A.toInt())) })
             addView(t("Calls", 22f, Color.WHITE, true).apply { setPadding(d(14), 0, 0, 0) }, lp(0, W, 1f))
             addView(Ui.iconBtn(a, Icons.SEARCH, Color.WHITE, 24, 8) { searchId() })
-            addView(Ui.iconBtn(a, Icons.MORE, Color.WHITE, 24, 8) { AlertDialog.Builder(a).setItems(arrayOf("Clear call history")) { _, _ -> Store.clearCalls() ; refresh() }.show() })
+            addView(Ui.iconBtn(a, Icons.MORE, Color.WHITE, 24, 8) {
+                Dlg.sheet(a, listOf(Dlg.Row(Icons.DELETE, "Clear call history", "Delete all your call history") {
+                    Dlg.confirm(a, Icons.DELETE, "Clear call history", "This will permanently delete all your call history. You won't be able to undo this.", "Clear", Icons.DELETE) {
+                        Store.clearCalls(); Dlg.success(a, "Clear call history", "All call history has been cleared successfully.") { refresh() } } })) })
         }, lp(M, W).apply { topMargin = d(8) })
         val chips = LinearLayout(a)
         listOf("All", "Missed", "Incoming", "Outgoing").forEachIndexed { i, s -> chips.addView(Ui.chip(a, s, callFilter == i) { callFilter = i; refresh() }, lp(W, W).apply { rightMargin = d(8) }) }

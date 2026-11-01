@@ -56,7 +56,7 @@ class Calls(private val a: MainActivity) {
     private var localView: SurfaceViewRenderer? = null
     private var remoteView: SurfaceViewRenderer? = null
     private var dialog: Dialog? = null
-    private var ringDialog: AlertDialog? = null
+    private var ringDialog: Dialog? = null
     private var statusTv: TextView? = null
     private var ringtone: Ringtone? = null
     private val sig = Executors.newSingleThreadExecutor()
@@ -188,7 +188,7 @@ class Calls(private val a: MainActivity) {
         try {
             ringtone = RingtoneManager.getRingtone(a, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)); ringtone?.play()
         } catch (e: Exception) {}
-        ringDialog = AlertDialog.Builder(a)
+        ringDialog = PDialog(a)
             .setTitle(if (video) "📹 INCOMING VIDEO CALL" else "📞 INCOMING VOICE CALL")
             .setMessage(from).setCancelable(false)
             .setPositiveButton("ACCEPT") { _, _ -> accept() }
