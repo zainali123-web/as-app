@@ -5,7 +5,7 @@ android {
     defaultConfig {
         applicationId = "com.asapp.chat"
         minSdk = 24; targetSdk = 34
-        versionCode = 12; versionName = "1.1"
+        versionCode = 16; versionName = "1.5"
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
