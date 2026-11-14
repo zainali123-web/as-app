@@ -267,9 +267,17 @@ class MainActivity : Activity() {
         if (now > last) prefs().edit().putLong("last", now).apply()
         return daysLeft() > 0 || prefs().getInt("exp", 0) >= today()
     }
-    private fun enter() {
+    fun enter() {
         if (prefs().getLong("start", 0) == 0L) prefs().edit().putLong("start", System.currentTimeMillis()).apply()
-        if (access()) { buildUi(); checkCrash() } else paywall()
+        if (!access()) { paywall(); return }
+        val hasAccount = !(prefs().getString("uid", "") ?: "").isEmpty() && myId().isNotEmpty() && prefs().getBoolean("in", false)
+        if (!hasAccount) { buildUi(); checkCrash(); return }
+        if (!seats.usable()) {
+            if (prefs().getBoolean("seatWaiting", false)) seats.showWaiting(null) else { buildUi(); checkCrash() }
+            return
+        }
+        seats.showChecking()
+        seats.check { st -> if (st != null && !st.member) seats.showWaiting(st) else { buildUi(); checkCrash() } }
     }
     private fun verifyCode(code: String): Int? = try {
         val f = android.util.Base64.URL_SAFE or android.util.Base64.NO_PADDING or android.util.Base64.NO_WRAP
@@ -410,7 +418,7 @@ class MainActivity : Activity() {
     }
     private fun wipeAccount() {
         prefs().edit().remove("id").remove("uid").remove("kpriv").remove("kpub").remove("kuid").remove("pubPosted")
-            .remove("profPosted").remove("outbox").remove("dp").remove("nick").remove("rtoken").remove("pwsalt").remove("pwhash").apply()
+            .remove("profPosted").remove("seatWaiting").remove("outbox").remove("dp").remove("nick").remove("rtoken").remove("pwsalt").remove("pwhash").apply()
         chatLog.setLength(0); idToken = null
     }
 
@@ -514,7 +522,7 @@ class MainActivity : Activity() {
         if (http("PUT", "${db()}/users/$id.json?auth=$tok", JSONObject().put("pub", pub).put("owner", uid).toString()) == null)
             return "COULD NOT SAVE YOUR ID. CHECK THE RULES AND THAT EMAIL LOGIN IS ON."
 
-        p.edit().putString("id", id).putBoolean("pubPosted", true).putBoolean("profPosted", false).putBoolean("in", true).apply()
+        p.edit().putString("id", id).putBoolean("pubPosted", true).putBoolean("profPosted", false).putBoolean("in", true).remove("seatWaiting").apply()
         myName = p.getString("nick", "")?.takeIf { it.isNotEmpty() } ?: id
         sessPw = pw
         st("12 EMAIL LOGIN", "OK"); st("8 ONLINE CHAT", "OK")
@@ -530,7 +538,7 @@ class MainActivity : Activity() {
     }
 
     fun logout() {
-        prefs().edit().putBoolean("in", false).apply()
+        prefs().edit().putBoolean("in", false).remove("seatWaiting").apply()
         idToken = null; sessPw = null
         calls.stopAll()
         authScreen()
@@ -1044,6 +1052,7 @@ class MainActivity : Activity() {
         Qa(listOf("safe", "secure", "privacy", "encrypt", "hack", "mehfooz"), "Chats are end-to-end encrypted. Your email is not shown to others. Photos, videos and statuses you post are stored on cloud servers. You can block people and delete chats.", "Chats end-to-end encrypted hain. Aap ki email doosron ko nahi dikhti. Jo photo, video, status lagate ho wo cloud servers par rehte hain. Aap block aur delete kar sakte ho."),
         Qa(listOf("report", "problem", "complaint", "shikayat", "bug", "masla", "issue", "error"), "Open Settings, Help, Report a problem (or long-press a message, Report a problem). Write what is wrong, add a screenshot if you like, and send it to the AS CHATS team.", "Settings, Help, Report a problem (ya message par long-press, Report a problem). Kya masla hai likho, chaho to screenshot lagao, aur AS CHATS team ko bhejo."),
         Qa(listOf("storage", "space", "memory", "jagah"), "Settings, Storage and Data shows how much space saved reels use (limit 8 GB, oldest are removed first). You can clear them there.", "Settings, Storage and Data mein saved reels ki jagah dikhti hai (limit 8 GB, purani pehle hatti hain). Wahin se clear bhi kar sakte ho."),
+        Qa(listOf("seat", "waiting list", "waiting", "200 user", "200 users", "limit", "user limit", "intezar"), "AS CHATS has 200 seats. If all seats are taken you are added to the waiting list and you can see your number. A seat is freed when a member does not open the app for 2 months; then the first person in the waiting list gets in. Open the app again later to check.", "AS CHATS ki 200 seats hain. Sab seats bhar jayen to aap waiting list mein chale jate hain aur apna number dekh sakte hain. Jo member 2 mahine app na khole us ki seat khali ho jati hai aur waiting list ka pehla banda andar aa jata hai. Baad mein app dobara kholo aur check karo."),
         Qa(listOf("who are you", "kon ho", "kaun ho", "tum kya", "ai kya", "tum kaun"), "I am the AS CHATS helper. I know how the app works and can guide you step by step. I cannot read your chats.", "Main AS CHATS ka helper hoon. Mujhe app ka har hissa pata hai aur main step by step bata sakta hoon. Main aap ki chats nahi parh sakta."))
 
     fun aiReply(q: String): String {
@@ -1072,6 +1081,8 @@ class MainActivity : Activity() {
     val profileUi by lazy { ProfileUi(this, screens) }
     val settingsUi by lazy { SettingsUi(this, screens) }
     val reelsUi by lazy { ReelsUi(this, screens) }
+    val buddies by lazy { Buddies(this) }
+    val seats by lazy { Seats(this) }
     private var glow: GlowBg? = null
     private var pickCb: ((android.net.Uri) -> Unit)? = null
     private var camUri: android.net.Uri? = null
@@ -1088,7 +1099,7 @@ class MainActivity : Activity() {
         setContentView(frame)
         modeTv = TextView(this)
         refreshMode(); applyGlow()
-        startPolling(); startColors(); calls.start()
+        startPolling(); startColors(); calls.start(); seats.startLoops()
         screens.seed()
         screens.tab("home") { screens.home() }
         say(if (online()) "CHATTING MODE IS ACTIVATED" else "OFFLINE MODE IS ACTIVATED")
@@ -1206,6 +1217,8 @@ class MainActivity : Activity() {
         myName = if (v.isNotEmpty()) v else prefs().getString("id", myName) ?: myName
         io.execute { pushProfile() }
     }
+    fun removeDp() { prefs().edit().remove("dp").putBoolean("profPosted", false).apply(); io.execute { pushProfile() }; toast("PROFILE PICTURE REMOVED") }
+    fun hasDp(): Boolean = !(prefs().getString("dp", "") ?: "").isEmpty()
     fun setBio(v: String) { prefs().edit().putString("bio", v).putBoolean("profPosted", false).apply(); io.execute { pushProfile() } }
 
     // reels files / language
