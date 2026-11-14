@@ -14,6 +14,31 @@ jobs:
         with: { distribution: temurin, java-version: 17 }
       - uses: gradle/actions/setup-gradle@v4
         with: { gradle-version: 8.7 }
+      - name: Write the keys from GitHub Secrets
+        env:
+          S_PEXELS: ${{ secrets.PEXELS_KEY }}
+          S_FB_API_KEY: ${{ secrets.FB_API_KEY }}
+          S_FB_DB_URL: ${{ secrets.FB_DB_URL }}
+          S_CLOUD_NAME: ${{ secrets.CLOUD_NAME }}
+          S_CLOUD_PRESET: ${{ secrets.CLOUD_PRESET }}
+          S_TURN_URL: ${{ secrets.TURN_URL }}
+          S_TURN_USER: ${{ secrets.TURN_USER }}
+          S_TURN_PASS: ${{ secrets.TURN_PASS }}
+        run: |
+          cat > app/src/main/java/com/asapp/Keys.kt <<KEYS
+          package com.asapp
+
+          object Keys {
+              val PEXELS = "${S_PEXELS}"
+              val FB_API_KEY = "${S_FB_API_KEY}"
+              val FB_DB_URL = "${S_FB_DB_URL}"
+              val CLOUD_NAME = "${S_CLOUD_NAME}"
+              val CLOUD_PRESET = "${S_CLOUD_PRESET}"
+              val TURN_URL = "${S_TURN_URL}"
+              val TURN_USER = "${S_TURN_USER}"
+              val TURN_PASS = "${S_TURN_PASS}"
+          }
+          KEYS
       - run: gradle assembleDebug
       - run: cp app/build/outputs/apk/debug/app-debug.apk AS.apk
       - uses: softprops/action-gh-release@v2
