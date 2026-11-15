@@ -183,7 +183,7 @@ class MainActivity : Activity() {
     }
     fun say(t: String) {
         if (!prefs().getBoolean("voice", true)) return
-        if (ttsReady) tts?.speak(t, TextToSpeech.QUEUE_ADD, null, "as") else pend = t
+        if (ttsReady) { tts?.setSpeechRate(prefs().getInt("ttsRate", 70) / 100f); tts?.speak(t, TextToSpeech.QUEUE_ADD, null, "as") } else pend = t
     }
 
     // ---------- network (online / offline mode) ----------
@@ -233,7 +233,7 @@ class MainActivity : Activity() {
         }
         tts = TextToSpeech(this) {
             if (it == TextToSpeech.SUCCESS) {
-                tts?.language = Locale.US; ttsReady = true
+                tts?.language = Locale.US; tts?.setSpeechRate(prefs().getInt("ttsRate", 70) / 100f); ttsReady = true
                 pend?.let { p -> pend = null; say(p) }
             }
         }
