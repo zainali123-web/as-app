@@ -26,7 +26,7 @@ class ProfileUi(private val a: MainActivity, private val s: Screens) {
         val name = if (me) net.myName() else net.name(id)
         col.addView(FrameLayout(a).apply {
             addView(Ui.avatar(a, a, id, name, if (me) "me" else "dm", 124).apply { ring = Ui.GREEN; ringDp = 3f; if (!me && bmp == null) textSize0() }, FrameLayout.LayoutParams(d(124), d(124)))
-            if (me) addView(Ui.greenCircle(a, Icons.CAMERA_ADD, 38) { a.pickDp { s.refreshProfile() } }, FrameLayout.LayoutParams(d(38), d(38), Gravity.BOTTOM or Gravity.END))
+            if (me) addView(Ui.greenCircle(a, Icons.CAMERA_ADD, 38) { a.settingsUi.dpMenu { s.refreshProfile() } }, FrameLayout.LayoutParams(d(38), d(38), Gravity.BOTTOM or Gravity.END))
         }, Screens.lp0(d(124), d(124)).apply { topMargin = d(8) })
         col.addView(LinearLayout(a).apply { gravity = Gravity.CENTER; setPadding(0, d(12), 0, 0)
             addView(t(name, 26f, Color.WHITE, true))

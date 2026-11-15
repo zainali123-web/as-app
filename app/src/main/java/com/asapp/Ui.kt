@@ -2,6 +2,9 @@ package com.asapp
 
 import android.content.Context
 import android.graphics.*
+import android.media.MediaPlayer
+import android.view.Surface
+import android.view.TextureView
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.View
@@ -167,6 +170,16 @@ object Img {
     fun load(a: MainActivity, url: String, v: ImageView) {
         cache.get(url)?.let { v.setImageBitmap(it); return }
         v.tag = url
+        if (!url.startsWith("http")) {
+            pool.execute {
+                try {
+                    val o = BitmapFactory.Options().apply { inSampleSize = 2 }
+                    val b = BitmapFactory.decodeFile(url, o)
+                    if (b != null) { cache.put(url, b); a.runOnUiThread { if (v.tag == url) v.setImageBitmap(b) } }
+                } catch (e: Exception) {}
+            }
+            return
+        }
         pool.execute {
             try {
                 val c = java.net.URL(url).openConnection() as java.net.HttpURLConnection
@@ -193,4 +206,45 @@ class LiveBars(c: Context) : View(c) {
         }
         postInvalidateDelayed(110)
     }
+}
+
+/** video player that behaves like a normal view (rounded corners, buttons on top, centre-crop) */
+class ReelView(c: Context) : TextureView(c), TextureView.SurfaceTextureListener {
+    private var mp: MediaPlayer? = null
+    private var surf: Surface? = null
+    private var pending: String? = null
+    private var vw = 0
+    private var vh = 0
+    var onStarted: (() -> Unit)? = null
+    var onFail: (() -> Unit)? = null
+    init { surfaceTextureListener = this }
+    val isPlayingNow: Boolean get() = try { mp?.isPlaying == true } catch (e: Exception) { false }
+    val dur: Int get() = try { mp?.duration ?: 0 } catch (e: Exception) { 0 }
+    val pos: Int get() = try { mp?.currentPosition ?: 0 } catch (e: Exception) { 0 }
+    fun play(src: String) { pending = src; if (surf != null) startPending() }
+    private fun startPending() {
+        val s = pending ?: return; pending = null
+        release()
+        try {
+            val m = MediaPlayer(); mp = m
+            m.setSurface(surf); m.setDataSource(s)
+            m.setOnPreparedListener { it.isLooping = true; vw = it.videoWidth; vh = it.videoHeight; fit(); it.start(); onStarted?.invoke() }
+            m.setOnVideoSizeChangedListener { _, w, h -> vw = w; vh = h; fit() }
+            m.setOnErrorListener { _, _, _ -> onFail?.invoke(); true }
+            m.prepareAsync()
+        } catch (e: Exception) { onFail?.invoke() }
+    }
+    fun pause() { try { mp?.pause() } catch (e: Exception) {} }
+    fun resume() { try { mp?.start() } catch (e: Exception) {} }
+    fun release() { try { mp?.release() } catch (e: Exception) {}; mp = null }
+    private fun fit() {
+        if (vw == 0 || vh == 0 || width == 0 || height == 0) return
+        val s = Math.max(width / vw.toFloat(), height / vh.toFloat())
+        val m = Matrix(); m.setScale(vw * s / width, vh * s / height, width / 2f, height / 2f); setTransform(m)
+    }
+    override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) { super.onSizeChanged(w, h, ow, oh); fit() }
+    override fun onSurfaceTextureAvailable(st: SurfaceTexture, w: Int, h: Int) { surf = Surface(st); if (pending != null) startPending() else try { mp?.setSurface(surf) } catch (e: Exception) {} }
+    override fun onSurfaceTextureSizeChanged(st: SurfaceTexture, w: Int, h: Int) { fit() }
+    override fun onSurfaceTextureDestroyed(st: SurfaceTexture): Boolean { try { mp?.setSurface(null) } catch (e: Exception) {}; surf = null; return true }
+    override fun onSurfaceTextureUpdated(st: SurfaceTexture) {}
 }

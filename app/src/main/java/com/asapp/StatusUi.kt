@@ -106,19 +106,16 @@ class StatusUi(private val a: MainActivity, private val s: Screens) {
 
     // ---------- create ----------
     private fun compose() {
-        PDialog(a).setTitle("Add status").setItems(arrayOf("✏️  Text", "🖼  Photo", "🎬  Video")) { _, i ->
-            when (i) {
-                0 -> textStatus()
-                else -> {
-                    if (!net.cloudReady()) { a.toast("PHOTO/VIDEO NEEDS CLOUDINARY: FILL CLOUD_NAME + CLOUD_PRESET IN KEYS.KT"); return@setItems }
-                    val vid = i == 2
-                    a.pick(if (vid) "video/*" else "image/*") { uri ->
-                        a.toast("UPLOADING...")
-                        net.upload(uri, vid) { url -> if (url != null) net.postStatus(if (vid) "video" else "image", "", url, 0) { ok -> a.toast(if (ok) "STATUS POSTED" else "FAILED"); s.openTab(1) } }
-                    }
-                }
-            }
-        }.show()
+        Dlg.sheet(a, listOf(
+            Dlg.Row(Icons.EDIT, "Text", "Write a coloured status") { textStatus() },
+            Dlg.Row(Icons.CAMERA, "Photo", "Choose a picture from your gallery") {
+                a.pick("image/*") { uri -> a.toast("UPLOADING PHOTO..."); net.postStatusPhoto(uri) { ok -> a.toast(if (ok) "STATUS POSTED" else "FAILED. CHECK INTERNET AND THE FIREBASE RULES"); s.openTab(1) } } },
+            Dlg.Row(Icons.VIDEOCAM, "Video", "Choose a video from your gallery") {
+                a.pick("video/*") { uri ->
+                    if (!net.cloudReady()) { Dlg.notice(a, Icons.WARNING, "Video needs Cloudinary", "Videos need a free Cloudinary account. Fill CLOUD_NAME and CLOUD_PRESET in Keys.kt. Text and photo status work without it."); return@pick }
+                    a.toast("UPLOADING VIDEO... PLEASE WAIT")
+                    net.upload(uri, true) { url -> if (url != null) net.postStatus("video", "", url, 0) { ok -> a.toast(if (ok) "STATUS POSTED" else "FAILED"); s.openTab(1) } }
+                } }))
     }
 
     private fun textStatus() {
@@ -137,6 +134,19 @@ class StatusUi(private val a: MainActivity, private val s: Screens) {
             net.postStatus("text", x, "", bgColors[bgi]) { ok -> a.toast(if (ok) "STATUS POSTED" else "FAILED. CHECK INTERNET AND FIREBASE RULES"); if (ok) { dlg.dismiss(); s.openTab(1) } }
         }, FrameLayout.LayoutParams(d(58), d(58), Gravity.BOTTOM or Gravity.END).apply { setMargins(0, 0, d(24), d(30)) })
         dlg.setContentView(root); dlg.show()
+    }
+
+    // ---------- who viewed ----------
+    private fun viewers(owner: String, sid: String) {
+        net.viewers(owner, sid) { list ->
+            val v = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL }
+            if (list.isEmpty()) v.addView(t("Nobody has viewed this status yet.", 14f, Ui.GRAY).apply { setPadding(0, d(6), 0, d(6)) })
+            list.forEach { (id, ts) -> v.addView(LinearLayout(a).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(0, d(6), 0, d(6))
+                addView(Ui.avatar(a, a, id, net.name(id), "dm", 42))
+                addView(LinearLayout(a).apply { orientation = LinearLayout.VERTICAL; setPadding(d(12), 0, 0, 0)
+                    addView(t(net.name(id), 16f, Color.WHITE, true)); addView(t(Ui.ago(ts), 12f, Ui.GRAY)) }) }) }
+            PDialog(a).setTitle("Viewed by ${list.size}").setView(ScrollView(a).apply { addView(v) }).setPositiveButton("OK", null).show()
+        }
     }
 
     // ---------- viewer ----------
@@ -166,7 +176,7 @@ class StatusUi(private val a: MainActivity, private val s: Screens) {
                 addView(t(if (mineStatus) "My Status" else net.name(owner), 16f, Color.WHITE, true)); addView(t(Ui.ago(it.ts), 12f, 0xFFCCCCCC.toInt())) })
             var dur = 5000L
             when (it.type) {
-                "image" -> content.addView(ImageView(a).apply { scaleType = ImageView.ScaleType.FIT_CENTER; Img.load(a, it.url, this) }, FrameLayout.LayoutParams(M, M))
+                "image" -> content.addView(ImageView(a).apply { scaleType = ImageView.ScaleType.FIT_CENTER; val sidI = it.id; if (it.url.startsWith("fb:")) net.statusImage(owner, it.url.removePrefix("fb:")) { b -> if (b != null) setImageBitmap(b) } else Img.load(a, it.url, this) }, FrameLayout.LayoutParams(M, M))
                 "video" -> { val vv = VideoView(a); content.addView(vv, FrameLayout.LayoutParams(M, M, Gravity.CENTER)); vv.setVideoURI(android.net.Uri.parse(it.url))
                     vv.setOnPreparedListener { mp -> mp.start(); dur = Math.min(mp.duration.toLong() + 300, 30000L); timer?.let { r -> a.ui.removeCallbacks(r) }; timer = Runnable { show(idx + 1) }; a.ui.postDelayed(timer!!, dur) } }
                 else -> { content.setBackgroundColor(if (it.bg != 0) it.bg else bgColors[0])
@@ -179,11 +189,14 @@ class StatusUi(private val a: MainActivity, private val s: Screens) {
             tap.addView(View(a).apply { setOnClickListener { show(idx + 1) } }, Screens.lp0(0, M, 2f))
             content.addView(tap, FrameLayout.LayoutParams(M, M).apply { bottomMargin = d(90); topMargin = d(90) })
             if (mineStatus) {
-                val cnt = t("👁 …", 15f, Color.WHITE)
-                net.viewCount(owner, it.id) { n -> cnt.text = "👁 $n views" }
-                bottom.addView(LinearLayout(a).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(d(16), d(10), d(16), d(18)); setBackgroundColor(0x88000000.toInt())
-                    addView(cnt, Screens.lp0(0, W, 1f))
-                    addView(Ui.iconBtn(a, Icons.DELETE, Color.WHITE, 24, 8) { net.deleteStatus(it.id) { close(); s.openTab(1) } }) })
+                val sid = it.id
+                val cnt = t("0 views", 16f, Color.WHITE, true)
+                net.viewCount(owner, sid) { n -> cnt.text = "$n views" }
+                bottom.addView(LinearLayout(a).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(d(16), d(12), d(16), d(18)); setBackgroundColor(0x99000000.toInt())
+                    addView(LinearLayout(a).apply { gravity = Gravity.CENTER_VERTICAL
+                        addView(Ui.icon(a, Icons.EYE, Color.WHITE, 28)); addView(cnt.apply { setPadding(d(10), 0, 0, 0) })
+                        setOnClickListener { timer?.let { r -> a.ui.removeCallbacks(r) }; viewers(owner, sid) } }, Screens.lp0(0, W, 1f))
+                    addView(Ui.iconBtn(a, Icons.DELETE, Color.WHITE, 24, 8) { net.deleteStatus(sid) { close(); s.openTab(1) } }) })
             } else {
                 val reply = EditText(a).apply { hint = "Reply..."; setHintTextColor(0xAAFFFFFF.toInt()); setTextColor(Color.WHITE); setSingleLine(); background = Ui.shape(a, 0x66000000, Color.WHITE, 30); setPadding(d(16), d(10), d(16), d(10)) }
                 bottom.addView(LinearLayout(a).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(d(12), d(8), d(12), d(16))

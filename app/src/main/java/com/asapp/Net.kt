@@ -76,6 +76,33 @@ class Net(private val a: MainActivity) {
         Store.add(c.id, m, true, "📷 Photo")
         deliver(c, m, null)
     }
+    /** compress a picture so it fits inside a chat packet (about 90 KB) */
+    fun inlineJpeg(uri: Uri, maxPx: Int = 720): ByteArray? = try {
+        val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        a.contentResolver.openInputStream(uri)!!.use { BitmapFactory.decodeStream(it, null, o) }
+        var ss = 1; while (o.outWidth / ss > maxPx * 2 || o.outHeight / ss > maxPx * 2) ss *= 2
+        val o2 = BitmapFactory.Options().apply { inSampleSize = ss }
+        var bmp = a.contentResolver.openInputStream(uri)!!.use { BitmapFactory.decodeStream(it, null, o2) }!!
+        val sc = Math.min(1f, maxPx / Math.max(bmp.width, bmp.height).toFloat())
+        if (sc < 1f) bmp = Bitmap.createScaledBitmap(bmp, (bmp.width * sc).toInt(), (bmp.height * sc).toInt(), true)
+        var q = 78; var out: ByteArray
+        do { val bo = java.io.ByteArrayOutputStream(); bmp.compress(Bitmap.CompressFormat.JPEG, q, bo); out = bo.toByteArray(); q -= 10 } while (out.size > 90000 && q >= 38)
+        out
+    } catch (e: Exception) { null }
+
+    /** photo in a chat: Cloudinary if the keys are filled, otherwise inside the message itself */
+    fun sendPhoto(c: Conv, uri: Uri) {
+        if (cloudReady()) { upload(uri, false) { url -> if (url != null) sendImage(c, url) }; return }
+        a.io.execute {
+            val b = inlineJpeg(uri)
+            if (b == null) { a.runOnUiThread { a.toast("COULD NOT READ THIS PICTURE") }; return@execute }
+            val f = File(Store.voiceDir(), "img_" + rid() + ".jpg"); f.writeBytes(b)
+            a.runOnUiThread {
+                val m = newMsg("i", "", f.absolutePath); Store.add(c.id, m, true, "📷 Photo")
+                deliver(c, m, android.util.Base64.encodeToString(b, android.util.Base64.NO_WRAP))
+            }
+        }
+    }
     fun sendVoice(c: Conv, f: File, secs: Int) {
         val dest = File(Store.voiceDir(), "out_${rid()}.3gp"); f.copyTo(dest, true)
         val m = newMsg("v", "", dest.absolutePath, secs)
@@ -100,7 +127,7 @@ class Net(private val a: MainActivity) {
             }
             else -> {
                 val pkt = JSONObject().put("t", "m").put("id", m.id).put("k", m.kind).put("x", m.text).put("ts", m.ts)
-                if (m.kind == "i") pkt.put("u", m.file)
+                if (m.kind == "i") { if (m.file.startsWith("http")) pkt.put("u", m.file) else pkt.put("d", audio ?: "") }
                 if (m.kind == "v") pkt.put("d", audio ?: "").put("du", m.dur)
                 if (c.type == "group") pkt.put("g", c.id)
                 val targets = if (c.type == "group") c.members.filter { it != me() } else listOf(c.id)
@@ -141,7 +168,14 @@ class Net(private val a: MainActivity) {
                     val f = File(Store.voiceDir(), "in_$id.3gp")
                     try { f.writeBytes(android.util.Base64.decode(o.optString("d"), android.util.Base64.DEFAULT)) } catch (e: Exception) {}
                     file = f.absolutePath
-                } else if (kind == "i") file = o.optString("u")
+                } else if (kind == "i") {
+                    val dd = o.optString("d")
+                    if (dd.isNotEmpty()) {
+                        val f = File(Store.voiceDir(), "imgin_$id.jpg")
+                        try { f.writeBytes(android.util.Base64.decode(dd, android.util.Base64.DEFAULT)) } catch (e: Exception) {}
+                        file = f.absolutePath
+                    } else file = o.optString("u")
+                }
                 val m = Msg(id, from, o.optString("x"), o.optLong("ts", now()), 0, kind, file, o.optInt("du"))
                 val prev = when (kind) { "v" -> "🎤 Voice message"; "i" -> "📷 Photo"; else -> o.optString("x").take(60) }
                 Store.add(cid, m, false, prev)
@@ -240,6 +274,46 @@ class Net(private val a: MainActivity) {
             a.runOnUiThread { done(ok) }
         }
     }
+    fun postStatusPhoto(uri: Uri, done: (Boolean) -> Unit) {
+        if (!ready()) { a.toast("STATUS NEEDS INTERNET"); done(false); return }
+        if (cloudReady()) { upload(uri, false) { url -> if (url == null) done(false) else postStatus("image", "", url, 0, done) }; return }
+        a.io.execute {
+            val b = inlineJpeg(uri, 900); val sid = rid()
+            var ok = false
+            if (b != null) {
+                val put1 = fb("PUT", "statusimg/${me()}/$sid.json", JSONObject.quote(android.util.Base64.encodeToString(b, android.util.Base64.NO_WRAP))) != null
+                val o = JSONObject().put("type", "image").put("text", "").put("url", "fb:$sid").put("bg", 0).put("ts", now()).put("aud", a.prefsPublic().getString("statusAud", "all"))
+                ok = put1 && fb("PUT", "status/${me()}/items/$sid.json", o.toString()) != null
+            }
+            a.runOnUiThread { done(ok) }
+        }
+    }
+    fun statusImage(owner: String, sid: String, done: (Bitmap?) -> Unit) {
+        a.io.execute {
+            var bmp: Bitmap? = null
+            try {
+                val r = fb("GET", "statusimg/$owner/$sid.json")
+                if (r != null && r.trim() != "null") {
+                    val b64 = org.json.JSONTokener(r).nextValue() as String
+                    val x = android.util.Base64.decode(b64, android.util.Base64.DEFAULT); bmp = BitmapFactory.decodeByteArray(x, 0, x.size)
+                }
+            } catch (e: Exception) {}
+            a.runOnUiThread { done(bmp) }
+        }
+    }
+    fun viewers(owner: String, sid: String, done: (List<Pair<String, Long>>) -> Unit) {
+        if (!ready()) { done(emptyList()); return }
+        a.io.execute {
+            val out = ArrayList<Pair<String, Long>>()
+            try {
+                val r = fb("GET", "status/$owner/views/$sid.json")
+                if (r != null && r.trim() != "null") { val o = JSONObject(r); for (k in o.keys()) out.add(Pair(k, o.optLong(k))) }
+            } catch (e: Exception) {}
+            out.sortByDescending { it.second }
+            out.forEach { if (name(it.first) == it.first) fetchContact(it.first) }
+            a.runOnUiThread { done(out) }
+        }
+    }
     fun fetchStatus(id: String, done: (List<StatusItem>) -> Unit) {
         if (!ready()) { done(emptyList()); return }
         a.io.execute {
@@ -269,14 +343,14 @@ class Net(private val a: MainActivity) {
             else { val o = JSONObject(); ids.forEach { o.put(it, true) }; fb("PUT", "status/${me()}/close.json", o.toString()) }
         }
     }
-    fun deleteAllStatus(done: () -> Unit) { a.io.execute { fb("DELETE", "status/${me()}/items.json"); a.runOnUiThread { done() } } }
+    fun deleteAllStatus(done: () -> Unit) { a.io.execute { fb("DELETE", "status/${me()}/items.json"); fb("DELETE", "statusimg/${me()}.json"); a.runOnUiThread { done() } } }
     fun deleteForEveryone(c: Conv, m: Msg) {
         Store.deleteMsg(c.id, m.id)
         val pkt = JSONObject().put("t", "d").put("id", m.id).put("g", if (c.type == "group") c.id else "")
         val targets = if (c.type == "group") c.members.filter { it != me() } else listOf(c.id)
         a.io.execute { targets.forEach { a.sendOnline(it, pkt.toString()) } }
     }
-    fun markViewed(owner: String, sid: String) { if (ready()) a.io.execute { fb("PUT", "status/$owner/views/$sid/${me()}.json", now().toString()) } }
+    fun markViewed(owner: String, sid: String) { if (owner != me() && ready()) a.io.execute { fb("PUT", "status/$owner/views/$sid/${me()}.json", now().toString()) } }
     fun viewCount(owner: String, sid: String, done: (Int) -> Unit) {
         if (!ready()) { done(0); return }
         a.io.execute {
@@ -285,7 +359,7 @@ class Net(private val a: MainActivity) {
             a.runOnUiThread { done(n) }
         }
     }
-    fun deleteStatus(sid: String, done: () -> Unit) { a.io.execute { fb("DELETE", "status/${me()}/items/$sid.json"); a.runOnUiThread { done() } } }
+    fun deleteStatus(sid: String, done: () -> Unit) { a.io.execute { fb("DELETE", "status/${me()}/items/$sid.json"); fb("DELETE", "statusimg/${me()}/$sid.json"); a.runOnUiThread { done() } } }
 
     // ----- reels, likes, comments, follows -----
     fun postReel(url: String, cap: String, tags: String, done: (Boolean) -> Unit) {

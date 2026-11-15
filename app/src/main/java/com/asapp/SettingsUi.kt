@@ -20,6 +20,14 @@ class SettingsUi(private val a: MainActivity, private val s: Screens) {
             .setPositiveButton("SAVE") { _, _ -> done(et.text.toString().trim()) }.setNegativeButton("CANCEL", null).show()
     }
 
+    fun dpMenu(done: () -> Unit) {
+        val rows = ArrayList<Dlg.Row>()
+        rows.add(Dlg.Row(Icons.CAMERA_ADD, "Choose from gallery", "Pick a new profile picture") { a.pickDp { done() } })
+        if (a.hasDp()) rows.add(Dlg.Row(Icons.DELETE, "Remove photo", "Go back to the AS CHATS picture", true) {
+            Dlg.confirm(a, Icons.DELETE, "Remove photo", "Your profile picture will be removed and the AS CHATS picture will be shown.", "Remove", Icons.DELETE) { a.removeDp(); done() } })
+        Dlg.sheet(a, rows)
+    }
+
     private fun page(title: String, build: (LinearLayout) -> Unit) {
         val root = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL }
         root.addView(LinearLayout(a).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(d(8), d(10), d(8), d(6))
@@ -87,7 +95,7 @@ class SettingsUi(private val a: MainActivity, private val s: Screens) {
     private fun account(): Unit = page("Account") { c ->
         val box = group(); c.addView(box)
         item(box, Icons.EDIT, "Name", net.myName()) { prompt("Your name", "Nickname", p().getString("nick", "") ?: "") { v -> a.setNick(v); s.go("set-account") { account() } } }
-        item(box, Icons.CAMERA_ADD, "Profile picture", "Choose from gallery") { a.pickDp { s.go("set-account") { account() } } }
+        item(box, Icons.CAMERA_ADD, "Profile picture", "Change or remove") { dpMenu { s.go("set-account") { account() } } }
         item(box, Icons.INFO, "Bio", (p().getString("bio", "") ?: "").ifEmpty { "Write something about you" }) { prompt("Your bio", "Bio", p().getString("bio", "") ?: "") { v -> a.setBio(v); s.go("set-account") { account() } } }
         item(box, Icons.EMAIL, "Email", p().getString("email", "") ?: "") { a.toast("YOUR EMAIL STAYS HIDDEN FROM OTHERS") }
         item(box, Icons.DIALPAD, "My code", a.myId()) { a.shareId() }
@@ -108,6 +116,15 @@ class SettingsUi(private val a: MainActivity, private val s: Screens) {
             chips.addView(Ui.chip(a, nm, cur == pct) { if (cur != pct) a.setUiScale(pct) }, Screens.lp0(W, W).apply { rightMargin = d(8) })
         }
         c.addView(HorizontalScrollView(a).apply { addView(chips); isHorizontalScrollBarEnabled = false })
+        val tb = group(); c.addView(tb)
+        switchRow(tb, "Cartoon buddies", "A and S play games at the top of the screen", "cartoonOn", true)
+        c.addView(t("Cartoon size", 16f, Color.WHITE, true).apply { setPadding(d(4), d(14), 0, d(6)) })
+        val curSz = a.prefsPublic().getInt("cartoonSize", 80)
+        val szChips = LinearLayout(a)
+        listOf("Small" to 56, "Medium" to 80, "Large" to 110).forEach { (nm, v) ->
+            szChips.addView(Ui.chip(a, nm, curSz == v) { a.prefsPublic().edit().putInt("cartoonSize", v).apply(); s.go("set-chats") { chatsPage() } }, Screens.lp0(W, W).apply { rightMargin = d(8) })
+        }
+        c.addView(szChips)
         val box = group(); c.addView(box)
         switchRow(box, "Auto background colour", "Changes softly every 15 seconds", "bgauto", true) { a.applyGlow() }
         c.addView(t("Background colour (60)", 14f, Ui.GRAY).apply { setPadding(d(4), d(14), 0, d(6)) })
@@ -123,6 +140,13 @@ class SettingsUi(private val a: MainActivity, private val s: Screens) {
     fun notifications(): Unit = page("Notifications") { c ->
         val box = group(); c.addView(box)
         switchRow(box, "Voice announcements", "\"New message\", \"Chatting mode is activated\"...", "voice", true) { if (!it) a.stopTts() }
+        c.addView(t("Voice speed", 16f, Color.WHITE, true).apply { setPadding(d(4), d(14), 0, d(6)) })
+        val curRate = p().getInt("ttsRate", 70)
+        val rateChips = LinearLayout(a)
+        listOf("Very slow" to 55, "Slow" to 70, "Normal" to 90).forEach { (nm, v) ->
+            rateChips.addView(Ui.chip(a, nm, curRate == v) { p().edit().putInt("ttsRate", v).apply(); a.say("CHATTING MODE IS ACTIVATED"); s.go("set-n") { notifications() } }, Screens.lp0(W, W).apply { rightMargin = d(8) })
+        }
+        c.addView(rateChips)
     }
 
     private fun storage(): Unit = page("Storage and Data") { c ->

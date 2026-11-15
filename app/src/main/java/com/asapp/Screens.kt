@@ -44,6 +44,7 @@ class Screens(val a: MainActivity) {
     }
     fun show(v: View, nav: Int) {
         host.removeAllViews()
+        if (nav in 0..3 && a.buddies.enabled()) host.addView(a.buddies.stripView())
         host.addView(v, lp(M, 0, 1f))
         if (nav in 0..3) host.addView(mainNav(nav)) else if (nav >= 10) host.addView(a.reelsUi.nav(nav - 10))
     }
@@ -112,6 +113,13 @@ class Screens(val a: MainActivity) {
         val sv = ScrollView(a).apply { isVerticalScrollBarEnabled = false }
         val col = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL; setPadding(d(14), d(8), d(14), d(90)) }
         col.addView(header())
+        col.addView(LinearLayout(a).apply {
+            gravity = Gravity.CENTER; background = Ui.shape(a, 0xFF05181A.toInt(), Ui.CARD_STROKE, 30); setPadding(d(16), d(6), d(16), d(6))
+            addView(t("User = ${a.seats.members} / ${a.seats.CAP}", 13.5f, Ui.TEAL, true))
+            addView(t("   •   ", 13f, Ui.GRAY))
+            addView(t("Online = ${a.seats.online}", 13.5f, Ui.GREEN, true))
+        }, lp(W, W).apply { gravity = Gravity.CENTER_HORIZONTAL; topMargin = d(2); bottomMargin = d(2) })
+        a.seats.refreshCounts()
 
         col.addView(LinearLayout(a).apply {
             gravity = Gravity.CENTER_VERTICAL; background = Ui.card(a, 18); setPadding(d(14), d(12), d(14), d(12))
@@ -407,14 +415,12 @@ class Screens(val a: MainActivity) {
     }
 
     private fun pickPhoto(conv: Conv) {
-        if (conv.type == "nearby" || conv.type == "ai") { a.toast("PHOTOS CAN BE SENT IN ONLINE CHATS AND GROUPS"); return }
-        if (!net.cloudReady()) { a.toast("PHOTOS NEED CLOUDINARY: FILL CLOUD_NAME + CLOUD_PRESET IN KEYS.KT"); return }
-        a.pick("image/*") { uri -> a.toast("UPLOADING PHOTO..."); net.upload(uri, false) { url -> if (url != null) net.sendImage(conv, url) } }
+        if (conv.type == "nearby" || conv.type == "ai" || conv.type == "official") { a.toast("PHOTOS CAN BE SENT IN ONLINE CHATS AND GROUPS"); return }
+        a.pick("image/*") { uri -> a.toast("SENDING PHOTO..."); net.sendPhoto(conv, uri) }
     }
     private fun takePhoto(conv: Conv) {
-        if (conv.type == "nearby" || conv.type == "ai") { a.toast("PHOTOS CAN BE SENT IN ONLINE CHATS AND GROUPS"); return }
-        if (!net.cloudReady()) { a.toast("PHOTOS NEED CLOUDINARY: FILL CLOUD_NAME + CLOUD_PRESET IN KEYS.KT"); return }
-        a.capturePhoto { uri -> a.toast("UPLOADING PHOTO..."); net.upload(uri, false) { url -> if (url != null) net.sendImage(conv, url) } }
+        if (conv.type == "nearby" || conv.type == "ai" || conv.type == "official") { a.toast("PHOTOS CAN BE SENT IN ONLINE CHATS AND GROUPS"); return }
+        a.capturePhoto { uri -> a.toast("SENDING PHOTO..."); net.sendPhoto(conv, uri) }
     }
 
     private fun colorFor(id: String) = intArrayOf(0xFF4FC3F7.toInt(), 0xFFFFB74D.toInt(), 0xFFBA68C8.toInt(), 0xFF81C784.toInt(), 0xFFF06292.toInt(), 0xFFFFF176.toInt())[Ui.hash(id) % 6]

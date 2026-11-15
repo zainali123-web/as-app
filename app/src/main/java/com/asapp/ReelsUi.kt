@@ -37,7 +37,7 @@ class ReelsUi(private val a: MainActivity, private val s: Screens) {
             addView(View(a).apply { setBackgroundColor(if (on) Ui.GREEN else Color.TRANSPARENT) }, Screens.lp0(d(40), d(3)).apply { topMargin = d(3) })
             setOnClickListener { f() }
         }
-        bar.addView(item(0, "Home", Icons.CHAT) { s.openTab(0) }, Screens.lp0(0, W, 1f))
+        bar.addView(item(0, "Home", Icons.HOME) { s.openTab(0) }, Screens.lp0(0, W, 1f))
         bar.addView(item(1, "Reels", Icons.PLAY) { s.tab("reels") { home() } }, Screens.lp0(0, W, 1f))
         bar.addView(Ui.greenCircle(a, Icons.ADD, 54) { upload() }.apply { layoutParams = Screens.lp0(d(54), d(54)).apply { setMargins(d(8), 0, d(8), 0) } })
         bar.addView(item(3, "Discover", Icons.SEARCH) { s.go("discover") { discover() } }, Screens.lp0(0, W, 1f))
@@ -108,7 +108,7 @@ class ReelsUi(private val a: MainActivity, private val s: Screens) {
             addView(Ui.icon(a, ic, if (on) Ui.GREEN else Ui.TEAL, 34)); addView(t(title, 17f, if (on) Ui.GREEN else Color.WHITE, true).apply { setPadding(0, d(8), 0, 0) })
             addView(t(sub, 12f, if (on) Ui.GREEN else Ui.GRAY)); setOnClickListener { f() } }
         col.addView(LinearLayout(a).apply {
-            addView(card("Offline Reels", "Watch without internet ($n saved)", Icons.DOWN, false) { if (n == 0) askDownload() else { offline = true; a.say("ENJOY YOUR REEL"); s.go("feed") { feed(0) } } }, Screens.lp0(0, W, 1f).apply { rightMargin = d(6) })
+            addView(card("Offline Reels", "Watch without internet ($n saved)", Icons.FILE_DOWNLOAD, false) { if (n == 0) askDownload() else { offline = true; a.say("ENJOY YOUR REEL"); s.go("feed") { feed(0) } } }, Screens.lp0(0, W, 1f).apply { rightMargin = d(6) })
             addView(card("Online Reels", "Stream & explore", Icons.GLOBE, true) { offline = false; a.say("ENJOY YOUR REEL"); s.go("feed") { feed(0) } }, Screens.lp0(0, W, 1f).apply { leftMargin = d(6) }) })
         val rows = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL }
         col.addView(rows)
@@ -123,8 +123,8 @@ class ReelsUi(private val a: MainActivity, private val s: Screens) {
             if (s.cur != "reels") return@load
             rows.removeAllViews()
             if (list.isEmpty()) { rows.addView(t("No reels yet. Add your Pexels key in Keys.kt or upload your own.", 14f, Ui.GRAY).apply { setPadding(0, d(16), 0, d(8)) }); return@load }
-            rows.addView(thumbRow("Trending Now", Icons.INFO, list.take(8), 0))
-            rows.addView(thumbRow("Recommended For You", Icons.FAVORITE, list.drop(4).ifEmpty { list }.take(8), 4))
+            rows.addView(thumbRow("Trending Now", Icons.FIRE, list.take(8), 0))
+            rows.addView(thumbRow("Recommended For You", Icons.STAR_FILL, list.drop(4).ifEmpty { list }.take(8), 4))
             val creators = list.filter { !it.official }.groupBy { it.owner }.entries.sortedByDescending { it.value.size }.take(8)
             if (creators.isNotEmpty()) {
                 rows.addView(t("Popular Creators", 17f, Color.WHITE, true).apply { setPadding(0, d(14), 0, d(8)) })
@@ -170,7 +170,7 @@ class ReelsUi(private val a: MainActivity, private val s: Screens) {
     private fun thumbRow(title: String, icon: String, items: List<ReelItem>, startAt: Int): View {
         val box = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL }
         box.addView(LinearLayout(a).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(0, d(16), 0, d(8))
-            addView(Ui.icon(a, icon, 0xFFFFC107.toInt(), 22)); addView(t(title, 17f, Color.WHITE, true).apply { setPadding(d(8), 0, 0, 0) }, Screens.lp0(0, W, 1f)) })
+            addView(Ui.icon(a, icon, if (icon == Icons.FIRE) 0xFFFF7043.toInt() else 0xFFFFC107.toInt(), 22)); addView(t(title, 17f, Color.WHITE, true).apply { setPadding(d(8), 0, 0, 0) }, Screens.lp0(0, W, 1f)) })
         val h = LinearLayout(a)
         items.forEachIndexed { i, r -> h.addView(LinearLayout(a).apply { orientation = LinearLayout.VERTICAL; setPadding(0, 0, d(10), 0)
             addView(ImageView(a).apply { scaleType = ImageView.ScaleType.CENTER_CROP; setBackgroundColor(0xFF0A1C1E.toInt()); clipToOutline = true
@@ -209,10 +209,15 @@ class ReelsUi(private val a: MainActivity, private val s: Screens) {
 
     private fun playIn(holder: FrameLayout, list: List<ReelItem>, start: Int) {
         var idx = start
-        val card = FrameLayout(a).apply { background = Ui.shape(a, Color.BLACK, 0xFF0C4A42.toInt(), 18); clipToOutline = true
-            outlineProvider = object : android.view.ViewOutlineProvider() { override fun getOutline(v: View, o: android.graphics.Outline) { o.setRoundRect(0, 0, v.width, v.height, d(18).toFloat()) } } }
+        val card = FrameLayout(a).apply { background = Ui.shape(a, Color.BLACK, 0xFF0C4A42.toInt(), 18); setPadding(d(3), d(3), d(3), d(3)) }
         holder.addView(card, FrameLayout.LayoutParams(M, M))
-        val vv = VideoView(a); card.addView(vv, FrameLayout.LayoutParams(M, M, Gravity.CENTER))
+        val vv = ReelView(a)
+        vv.clipToOutline = true; vv.outlineProvider = object : android.view.ViewOutlineProvider() { override fun getOutline(v: View, o: android.graphics.Outline) { o.setRoundRect(0, 0, v.width, v.height, d(15).toFloat()) } }
+        card.addView(vv, FrameLayout.LayoutParams(M, M, Gravity.CENTER))
+        val spinner = ProgressBar(a).apply { indeterminateTintList = android.content.res.ColorStateList.valueOf(Ui.GREEN) }
+        card.addView(spinner, FrameLayout.LayoutParams(d(46), d(46), Gravity.CENTER))
+        vv.onStarted = { spinner.visibility = View.GONE }
+        vv.onFail = { spinner.visibility = View.GONE; a.toast("THIS REEL COULD NOT PLAY. SWIPE UP FOR THE NEXT ONE.") }
         val overlay = FrameLayout(a); card.addView(overlay, FrameLayout.LayoutParams(M, M))
         val heart = ImageView(a).apply { setImageDrawable(PathIcon(Icons.FAVORITE, Ui.RED)); alpha = 0f }
         card.addView(heart, FrameLayout.LayoutParams(d(110), d(110), Gravity.CENTER))
@@ -220,22 +225,28 @@ class ReelsUi(private val a: MainActivity, private val s: Screens) {
         val track = FrameLayout(a).apply { setBackgroundColor(0x55FFFFFF); addView(progress, FrameLayout.LayoutParams(0, M)) }
         card.addView(track, FrameLayout.LayoutParams(M, d(3), Gravity.BOTTOM))
         val tick = object : Runnable { override fun run() {
-            if (vv.duration > 0) progress.layoutParams = FrameLayout.LayoutParams((track.width * vv.currentPosition.toFloat() / vv.duration).toInt(), M)
+            if (s.cur != "feed") { vv.release(); return }
+            if (vv.dur > 0) progress.layoutParams = FrameLayout.LayoutParams((track.width * vv.pos.toFloat() / vv.dur).toInt(), M)
             a.ui.postDelayed(this, 250) } }
         a.ui.postDelayed(tick, 250)
 
         fun show() {
             val r = list[idx]
             overlay.removeAllViews()
-            vv.setVideoURI(if (r.url.startsWith("http")) Uri.parse(r.url) else Uri.fromFile(File(r.url)))
-            vv.setOnPreparedListener { it.isLooping = true; vv.start() }
-            vv.setOnErrorListener { _, _, _ -> a.toast("THIS REEL FAILED. SWIPE UP."); true }
+            val local = a.reelFiles().firstOrNull { it.name == r.id.removePrefix("pex_") + ".mp4" || it.absolutePath == r.url }
+            spinner.visibility = View.VISIBLE
+            vv.play(local?.absolutePath ?: r.url)
             if (counted.add(r.id)) net.addView(r.id)
             overlay.addView(LinearLayout(a).apply { gravity = Gravity.CENTER_VERTICAL; background = Ui.shape(a, 0x99000000.toInt(), 0, 20); setPadding(d(10), d(6), d(12), d(6))
-                addView(Ui.icon(a, Icons.SEARCH, Ui.GREEN, 16)); addView(t("For You", 13f).apply { setPadding(d(6), 0, 0, 0) }) },
+                addView(Ui.icon(a, Icons.SPARKLE, Color.WHITE, 16)); addView(t("For You", 13f).apply { setPadding(d(6), 0, 0, 0) }) },
                 FrameLayout.LayoutParams(W, W, Gravity.TOP or Gravity.START).apply { setMargins(d(12), d(12), 0, 0) })
             val views = t("▶ …", 13f).apply { background = Ui.shape(a, 0x99000000.toInt(), 0, 20); setPadding(d(12), d(6), d(12), d(6)) }
-            overlay.addView(views, FrameLayout.LayoutParams(W, W, Gravity.TOP or Gravity.END).apply { setMargins(0, d(12), d(12), 0) })
+            overlay.addView(LinearLayout(a).apply { gravity = Gravity.CENTER_VERTICAL
+                addView(views); addView(Ui.iconBtn(a, Icons.MORE, Color.WHITE, 22, 6) { Dlg.sheet(a, listOf(
+                    Dlg.Row(Icons.FILE_DOWNLOAD, "Download", "Save this reel to your phone") { a.downloadReelToPhone(r.id, r.url) },
+                    Dlg.Row(Icons.SHARE, "Share", "Share this reel link") { a.shareText("Watch this reel on AS CHATS: ${r.url}") },
+                    Dlg.Row(Icons.WARNING, "Report a problem", "Help us improve", true) { a.reportProblem() }), true) }) },
+                FrameLayout.LayoutParams(W, W, Gravity.TOP or Gravity.END).apply { setMargins(0, d(6), d(6), 0) })
             net.viewsOf(r.id) { n -> views.text = "▶ " + compact(n) }
 
             // right column
@@ -245,9 +256,9 @@ class ReelsUi(private val a: MainActivity, private val s: Screens) {
                 addView(Ui.avatar(a, a, r.owner, r.name, if (r.official) "official" else "dm", 54), FrameLayout.LayoutParams(d(54), d(54)))
                 addView(Ui.greenCircle(a, Icons.ADD, 22) {}, FrameLayout.LayoutParams(d(22), d(22), Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL))
                 setOnClickListener { if (!r.official) s.go("profile:${r.owner}") { a.profileUi.profile(r.owner) } } }
-            col.addView(avWrap, Screens.lp0(d(54), d(60)))
+            col.addView(avWrap, Screens.lp0(d(54), d(60)).apply { gravity = Gravity.CENTER_HORIZONTAL })
             fun act(ic: ImageView, tx: TextView?, f: () -> Unit) { col.addView(LinearLayout(a).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; setPadding(0, d(8), 0, d(2))
-                addView(ic, Screens.lp0(d(34), d(34))); tx?.let { addView(it) }; setOnClickListener { f() } }) }
+                addView(ic, Screens.lp0(d(34), d(34))); tx?.let { addView(it.apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER }, Screens.lp0(W, W)) }; setOnClickListener { f() } }, Screens.lp0(d(70), W)) }
             fun ico(p: String, c: Int = Color.WHITE) = ImageView(a).apply { setImageDrawable(PathIcon(p, c)) }
             likeIv.setImageDrawable(PathIcon(Icons.FAVORITE, if (liked.contains(r.id)) Ui.RED else Color.WHITE))
             fun doLike() {
@@ -257,11 +268,11 @@ class ReelsUi(private val a: MainActivity, private val s: Screens) {
             }
             act(likeIv, likeTx) { doLike() }
             act(ico(Icons.CHAT_OUTLINE), comTx) { comments(r) }
-            val saveIv = ico(Icons.STATUS, if (saved.contains(r.id)) Ui.GREEN else Color.WHITE)
+            val saveIv = ico(Icons.BOOKMARK, if (saved.contains(r.id)) Ui.GREEN else Color.WHITE)
             act(ico(Icons.SHARE), t("Share", 12f)) { a.shareText("Watch this reel on AS CHATS: ${r.url}") }
-            act(saveIv, t("Save", 12f)) { if (!saved.remove(r.id)) saved.add(r.id); saveIv.setImageDrawable(PathIcon(Icons.STATUS, if (saved.contains(r.id)) Ui.GREEN else Color.WHITE)); a.toast(if (saved.contains(r.id)) "SAVED" else "REMOVED") }
-            act(ico(Icons.CALL_MADE), t("Repost", 12f)) { repost(r) }
-            act(ico(Icons.DOWN), t("Download", 12f)) { a.downloadReelToPhone(r.id, r.url) }
+            act(saveIv, t("Save", 12f)) { if (!saved.remove(r.id)) saved.add(r.id); saveIv.setImageDrawable(PathIcon(Icons.BOOKMARK, if (saved.contains(r.id)) Ui.GREEN else Color.WHITE)); a.toast(if (saved.contains(r.id)) "SAVED" else "REMOVED") }
+            act(ico(Icons.REPEAT), t("Repost", 12f)) { repost(r) }
+            act(ico(Icons.FILE_DOWNLOAD), t("Download", 12f)) { a.downloadReelToPhone(r.id, r.url) }
             col.addView(AvatarView(a).apply { fill = 0xFF03161A.toInt(); ring = Ui.GREEN; setIconPath(Icons.GRAPHIC_EQ, Ui.GREEN) }, Screens.lp0(d(44), d(44)).apply { topMargin = d(10) })
             overlay.addView(col, FrameLayout.LayoutParams(W, W, Gravity.END or Gravity.BOTTOM).apply { setMargins(0, 0, d(8), d(46)) })
 
@@ -289,7 +300,7 @@ class ReelsUi(private val a: MainActivity, private val s: Screens) {
             override fun onFling(e1: MotionEvent?, e2: MotionEvent, vx: Float, vy: Float): Boolean {
                 if (vy < -400) idx = (idx + 1) % list.size else if (vy > 400) idx = (idx - 1 + list.size) % list.size else return true
                 show(); return true }
-            override fun onSingleTapConfirmed(e: MotionEvent): Boolean { if (vv.isPlaying) vv.pause() else vv.start(); return true }
+            override fun onSingleTapConfirmed(e: MotionEvent): Boolean { if (vv.isPlayingNow) vv.pause() else vv.resume(); return true }
             override fun onDoubleTap(e: MotionEvent): Boolean {
                 val r = list[idx]; if (!liked.contains(r.id)) { liked.add(r.id); net.setLike(r.id, true); show() }
                 heart.animate().cancel(); heart.alpha = 1f; heart.scaleX = 0.4f; heart.scaleY = 0.4f
@@ -331,7 +342,7 @@ class ReelsUi(private val a: MainActivity, private val s: Screens) {
 
     // ---------- upload ----------
     fun upload() {
-        if (!net.cloudReady()) { a.toast("REEL UPLOAD NEEDS CLOUDINARY: FILL CLOUD_NAME + CLOUD_PRESET IN KEYS.KT"); return }
+        if (!net.cloudReady()) { Dlg.notice(a, Icons.WARNING, "Reel upload needs Cloudinary", "Videos need a free Cloudinary account. Fill CLOUD_NAME and CLOUD_PRESET in Keys.kt."); return }
         if (!a.onlineReady() || !a.online()) { a.toast("UPLOAD NEEDS INTERNET + LOGIN"); return }
         a.pick("video/*") { uri ->
             val cap = EditText(a).apply { hint = "Write a caption"; maxLines = 3 }

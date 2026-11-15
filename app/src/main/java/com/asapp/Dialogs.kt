@@ -87,6 +87,19 @@ object Dlg {
         d = make(c, v); d.show(); return d
     }
 
+    fun notice(c: Context, icon: String, title: String, msg: String): Dialog {
+        lateinit var d: Dialog
+        val v = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(c, 18), dp(c, 20), dp(c, 18), dp(c, 18)) }
+        v.addView(LinearLayout(c).apply {
+            addView(ring(c, icon, 54))
+            addView(LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(c, 14), 0, 0, 0)
+                addView(Ui.tv(c, title, 21f, Color.WHITE, true)); addView(Ui.tv(c, msg, 14.5f, 0xFFDCE8E6.toInt()).apply { setPadding(0, dp(c, 6), 0, 0) }) },
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        })
+        v.addView(fillBtn(c, "OK") { d.dismiss() }, LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP).apply { topMargin = dp(c, 18) })
+        d = make(c, v); d.show(); return d
+    }
+
     class Row(val icon: String, val title: String, val sub: String = "", val sepBefore: Boolean = false, val f: () -> Unit)
 
     /** list of actions: round icon, title, small text, arrow */
